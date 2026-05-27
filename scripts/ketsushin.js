@@ -309,10 +309,9 @@ Hooks.once("init", function () {
   };
 
   CONFIG.DND5E.armorTypes = {
-    clothing: "Normale Kleidung",
-    light:    "Leichte Rüstung",
-    heavy:    "Schwere Rüstung",
-    shield:   "Schild"
+    light:  "Leichte Rüstung",
+    heavy:  "Mittlere/Schwere Rüstung",
+    shield: "Schild"
   };
 
   // Waffen
@@ -923,17 +922,36 @@ Hooks.once("ready", function () {
     }
 
     if (trait === "armor") {
-      $h.find("li[data-key]").each(function () {
-        const $li = $(this);
-        const key = _norm($li.data("key") ?? "");
-        if (!key) return;
-        if (KS_ARMOR_FLAT[key]) {
-          $li.show();
-          $li.find("label").not(":has(input)").first().text(KS_ARMOR_FLAT[key]);
-        } else if (!["light", "medium", "heavy", "shield"].includes(key)) {
-          $li.hide();
-        }
-      });
+      // ArmorConfig: erst dnd5e-checkbox-Ansatz versuchen (wie WeaponsConfig)
+      const $armorCbs = $h.find("dnd5e-checkbox[name*='.armorProf.value.']").not("[name*='.mastery.']");
+      if ($armorCbs.length) {
+        $h.find("ol.trait-list li").each(function () {
+          const $li = $(this);
+          const $cb = $li.find("dnd5e-checkbox[name*='.armorProf.value.']").not("[name*='.mastery.']").first();
+          if (!$cb.length) return;
+          const key = ($cb.attr("name") ?? "").split(".").pop();
+          if (!key) return;
+          if (KS_ARMOR_FLAT[key]) {
+            $li.show();
+            $li.find("label.name").first().text(KS_ARMOR_FLAT[key]);
+          } else {
+            $li.hide(); // clothing, medium, etc.
+          }
+        });
+      } else {
+        // Fallback: data-key (wie ToolsConfig)
+        $h.find("li[data-key], [data-key]").each(function () {
+          const $li = $(this);
+          const key = _norm($li.data("key") ?? "");
+          if (!key) return;
+          if (KS_ARMOR_FLAT[key]) {
+            $li.show();
+            $li.find("label").not(":has(input)").first().text(KS_ARMOR_FLAT[key]);
+          } else {
+            $li.hide();
+          }
+        });
+      }
     }
   }
 
