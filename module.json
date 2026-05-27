@@ -1,0 +1,32 @@
+{
+  "id": "ketsushin-salt-silver",
+  "title": "Ketsushin: Salt & Silver",
+  "description": "Ein Foundry VTT Modul, das das dnd5e-System mit eigenen Fertigkeiten, Werkzeugen und Sprachen erweitert.",
+  "version": "0.1.0",
+  "compatibility": {
+    "minimum": "12",
+    "verified": "12"
+  },
+  "authors": [
+    {
+      "name": "Ketsushin"
+    }
+  ],
+  "scripts": [
+    "scripts/ketsushin.js"
+  ],
+  "styles": [
+    "styles/ketsushin.css"
+  ],
+  "relationships": {
+    "systems": [
+      {
+        "id": "dnd5e",
+        "type": "requires",
+        "compatibility": {
+          "minimum": "3.0.0"
+        }
+      }
+    ]
+  }
+}
