@@ -1,5 +1,75 @@
 // Ketsushin: Salt & Silver
 
+// Werkzeug-Definitionen: Kategorie → { label, items: { key: deutscherName } }
+const KS_TOOLS = {
+  art: {
+    label: "Handwerkszeug",
+    items: {
+      alchemist:    "Alchemie",
+      brewer:       "Brauerei",
+      calligrapher: "Kalligrafie",
+      tinker:       "Bastler",
+      cartographer: "Kartografie",
+      cook:         "Koch",
+      mason:        "Steinmetz",
+      jeweler:      "Juwelier",
+      glassblower:  "Glasbläser",
+      leatherwork:  "Lederbearbeitung",
+      cobbler:      "Schuster",
+      painter:      "Maler",
+      potter:       "Töpfer",
+      smith:        "Schmiede",
+      carpenter:    "Tischler",
+      weaver:       "Weber",
+      woodcarver:   "Schnitz",
+      mechanic:     "Mechaniker",
+      locksmith:    "Schlosser"
+    }
+  },
+  music: {
+    label: "Instrumente",
+    items: {
+      bagpipe:   "Dudelsack",
+      drum:      "Trommel",
+      dulcimer:  "Hackbrett",
+      flute:     "Flöte",
+      horn:      "Horn",
+      lute:      "Laute",
+      lyre:      "Leier",
+      panflute:  "Panflöte",
+      shawm:     "Schalmei",
+      viol:      "Gambe",
+      klavier:   "Klavier",
+      saxophon:  "Saxophon",
+      trompete:  "Trompete",
+      triangel:  "Triangel"
+    }
+  },
+  game: {
+    label: "Spielsets",
+    items: {
+      dice:               "Würfelset",
+      threedragons:       "Three-Dragon Ante",
+      poker:              "Poker",
+      blackjack:          "Blackjack",
+      schach:             "Schach",
+      dame:               "Dame",
+      mahjong:            "Mahjong",
+      go:                 "Go",
+      russischesRoulette: "Russisches Roulette",
+      shogi:              "Shogi"
+    }
+  },
+  vehicle: {
+    label: "Fahrzeuge",
+    items: {
+      airVehicle:   "Luftfahrzeug",
+      landVehicle:  "Landfahrzeug",
+      waterVehicle: "Wasserfahrzeug"
+    }
+  }
+};
+
 // Umrechnungskurse: Einheiten pro 1 EUR
 const KS_EXCHANGE_RATES = {
   eur: 1,
@@ -304,6 +374,14 @@ Hooks.once("init", function () {
     sil: { label: "Versilbert",        abbreviation: "Sil" }
   };
 
+  // Werkzeugkategorien (für Proficiency-Picker-Gruppenüberschriften)
+  CONFIG.DND5E.toolTypes = {
+    art:     "Handwerkszeug",
+    music:   "Instrumente",
+    game:    "Spielsets",
+    vehicle: "Fahrzeuge"
+  };
+
   // Währungen
   CONFIG.DND5E.currencies = {
     eur: { label: "Euro",              abbreviation: "€",  conversion: 1     },
@@ -423,4 +501,104 @@ Hooks.on("renderActorSheet5eCharacter", function (sheet, html, _data) {
       bindInputs();
     }).render(true);
   });
+});
+
+// =============================================================================
+// =============================================================================
+// Proficiency-Picker: deutsche Bezeichnungen für Waffen, Rüstungen & Werkzeuge
+//
+// Strategie A: fromUuid / fromUuidSync patchen (greift, wenn dnd5e den globalen
+//              Call nutzt – Standard in Foundry V12).
+// Strategie B: dnd5e.documents.Trait.choices direkt patchen – zuverlässigster
+//              Weg, umgeht lokale Imports und UUID-Caching vollständig.
+// =============================================================================
+Hooks.once("ready", function () {
+  const MODULE_ID = "ketsushin-salt-silver";
+
+  // ── Strategie A: UUID → synthetisches Item-Objekt ────────────────────────
+  const KS_SYNTH = {};
+  for (const [catKey, cat] of Object.entries(KS_TOOLS)) {
+    for (const [toolKey, toolName] of Object.entries(cat.items)) {
+      const uuid = `Compendium.${MODULE_ID}.items.Item.${toolKey}`;
+      KS_SYNTH[uuid] = {
+        id:           toolKey,
+        uuid,
+        documentName: "Item",
+        pack:         `${MODULE_ID}.items`,
+        name:         toolName,
+        type:         "tool",
+        system: {
+          type:       { value: catKey, subtype: "" },
+          proficient: null,
+          bonus:      ""
+        },
+        toObject() { return foundry.utils.deepClone(this); },
+        toJSON()   { return foundry.utils.deepClone(this); }
+      };
+    }
+  }
+
+  const _fromUuid = globalThis.fromUuid;
+  if (typeof _fromUuid === "function") {
+    globalThis.fromUuid = async function (uuid, options) {
+      return KS_SYNTH[uuid] ?? _fromUuid.call(this, uuid, options);
+    };
+  }
+
+  const _fromUuidSync = globalThis.fromUuidSync;
+  if (typeof _fromUuidSync === "function") {
+    globalThis.fromUuidSync = function (uuid, options) {
+      return KS_SYNTH[uuid] ?? _fromUuidSync.call(this, uuid, options);
+    };
+  }
+
+  // ── Strategie B: dnd5e.documents.Trait.choices patchen ───────────────────
+  const Trait = globalThis.dnd5e?.documents?.Trait;
+  if (Trait?.choices) {
+    const _choices = Trait.choices;
+    Trait.choices = async function (trait, opts = {}) {
+
+      // Werkzeuge
+      if (trait === "tool") {
+        const result = {};
+        for (const [catKey, cat] of Object.entries(KS_TOOLS)) {
+          result[catKey] = {
+            label:    cat.label,
+            children: Object.fromEntries(
+              Object.entries(cat.items).map(([k, v]) => [k, { label: v }])
+            )
+          };
+        }
+        return result;
+      }
+
+      // Waffenbeherrschungen
+      if (trait === "weapon") {
+        const sim = {}, mar = {};
+        for (const [k, v] of Object.entries(CONFIG.DND5E.simpleWeapons  ?? {}))
+          sim[k] = { label: v.label };
+        for (const [k, v] of Object.entries(CONFIG.DND5E.martialWeapons ?? {}))
+          mar[k] = { label: v.label };
+        return {
+          sim: { label: "Leichte Waffen", children: sim },
+          mar: { label: "Schwere Waffen", children: mar }
+        };
+      }
+
+      // Rüstungsbeherrschungen
+      if (trait === "armor") {
+        const result = {};
+        for (const [k, v] of Object.entries(CONFIG.DND5E.armorTypes ?? {}))
+          result[k] = { label: typeof v === "string" ? v : (v.label ?? k) };
+        return result;
+      }
+
+      return _choices.call(this, trait, opts);
+    };
+    console.log("Ketsushin | dnd5e.documents.Trait.choices erfolgreich gepatcht.");
+  } else {
+    console.warn("Ketsushin | dnd5e.documents.Trait nicht gefunden – nur fromUuid-Patch aktiv.");
+  }
+
+  console.log(`Ketsushin | ${Object.keys(KS_SYNTH).length} Werkzeuge als synthetische Items registriert.`);
 });
