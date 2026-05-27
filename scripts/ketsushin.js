@@ -66,9 +66,10 @@ const KS_TOOLS = {
   vehicle: {
     label: "Fahrzeuge",
     items: {
-      airVehicle:   "Luftfahrzeug",
-      landVehicle:  "Landfahrzeug",
-      waterVehicle: "Wasserfahrzeug"
+      air:   "Luftfahrzeug",
+      land:  "Landfahrzeug",
+      water: "Wasserfahrzeug",
+      space: "Raumfahrzeug"
     }
   }
 };
@@ -687,7 +688,19 @@ Hooks.once("ready", function () {
   }
 
   // E2: ProficiencyConfig._prepareContext – ersetzt ctx.choices komplett
-  const PC = globalThis.dnd5e?.applications?.actor?.ProficiencyConfig;
+  const PC = globalThis.dnd5e?.applications?.actor?.ProficiencyConfig
+    || globalThis.dnd5e?.applications?.ProficiencyConfig
+    || (() => {
+         for (const ns of Object.values(globalThis.dnd5e?.applications ?? {})) {
+           if (typeof ns === "object" && ns !== null) {
+             for (const v of Object.values(ns)) {
+               if (typeof v === "function" && v.name === "ProficiencyConfig") return v;
+             }
+           }
+           if (typeof ns === "function" && ns.name === "ProficiencyConfig") return ns;
+         }
+         return null;
+       })();
   function _buildKsChoices(trait) {
     if (trait === "tool") {
       const c = {};
@@ -950,21 +963,28 @@ Hooks.once("ready", function () {
       const $h = _$el(el);
       if (!$h.length) return;
 
-      // Trait aus App-Optionen oder Daten ermitteln
       let trait = _trait(app, data);
+      const appName = app?.constructor?.name ?? "";
 
-      // Diagnose: logge jeden Dialog mit [data-key]-Elementen
+      // Diagnose: bei JEDEM Proficiency/Trait-Dialog loggen (auch ohne data-key)
+      const looksLikeProf = ["proficiency","trait","config","selector"].some(w => appName.toLowerCase().includes(w));
       const $keys = $h.find("[data-key]");
-      if ($keys.length) {
-        const sample = [...$keys].slice(0, 6).map(e => e.getAttribute("data-key")).join(", ");
-        console.log(`KS | ${hookName} | app=${app?.constructor?.name} | trait="${trait}" | app.attr="${app?.attribute}" | opts.attr="${app?.options?.attribute}" | ctx.trait="${data?.trait}" | keys: ${sample}`);
+      const $vals = $h.find("[data-value]");
+      if (looksLikeProf || $keys.length || $vals.length) {
+        const sk = [...$keys].slice(0, 6).map(e => e.getAttribute("data-key")).join(" | ");
+        const sv = [...$vals].slice(0, 6).map(e => e.getAttribute("data-value")).join(" | ");
+        console.log(`KS | ${hookName} | app=${appName} | trait="${trait}" | app.attr="${app?.attribute}" | opts.attr="${app?.options?.attribute}" | [data-key]: ${sk || "(none)"} | [data-value]: ${sv || "(none)"}`);
+        // HTML-Dump für unbekannte Dialoge
+        if (!$keys.length && !$vals.length) {
+          console.log(`KS | ${appName} HTML:`, $h[0]?.innerHTML?.slice(0, 3000));
+        }
       }
 
       // Fallback: Trait aus data-key-Einträgen im HTML ableiten
       if (!trait) {
-        if ($h.find("[data-key*='tool']").length)   trait = "tool";
-        else if ($h.find("[data-key*='weapon'], [data-key='sim'], [data-key^='sim:'], [data-key='mar'], [data-key^='mar:']").length) trait = "weapon";
-        else if ($h.find("[data-key*='armor']").length)  trait = "armor";
+        if ($h.find("[data-key*='tool'], [data-value*='tool']").length)   trait = "tool";
+        else if ($h.find("[data-key*='weapon'], [data-key='sim'], [data-key^='sim:'], [data-key='mar'], [data-key^='mar:'], [data-value='sim'], [data-value='mar'], [data-value*='weapon']").length) trait = "weapon";
+        else if ($h.find("[data-key*='armor'], [data-value*='armor']").length)  trait = "armor";
         else if ($h.find("input[name*='.tools.']").length) trait = "tool";
       }
 
