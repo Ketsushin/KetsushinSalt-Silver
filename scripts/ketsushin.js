@@ -754,55 +754,45 @@ Hooks.once("ready", function () {
   // ── Strategie F: DOM-Injection – fügt fehlende Items in die Liste ein ──
   // Greift wenn die data-Ebene nicht überschrieben werden konnte.
   function _injectMissingWeaponItems($h) {
+    // WeaponsConfig (dnd5e 4.x): Kategorien via dnd5e-checkbox name="...weaponProf.value.sim/mar"
     const cats = {
       sim: { items: CONFIG.DND5E.simpleWeapons  ?? {} },
       mar: { items: CONFIG.DND5E.martialWeapons ?? {} }
     };
     for (const [catKey, cat] of Object.entries(cats)) {
-      let $container = null, $tmpl = null;
+      // <ol class="trait-list"> der Kategorie finden (über das "Alle"-Checkbox-Element)
+      const $allCb = $h.find(`dnd5e-checkbox[name$=".weaponProf.value.${catKey}"]`).first();
+      const $ol = $allCb.closest("ol.trait-list");
+      if (!$ol.length) continue;
 
-      // Container über vorhandene Items dieser Kategorie finden
-      for (const itemKey of Object.keys(cat.items)) {
-        const $f = $h.find(`[data-key="${catKey}:${itemKey}"], [data-key="${itemKey}"]`);
-        if ($f.length) { $container = $f.first().parent(); $tmpl = $f.first(); break; }
-      }
-      // Fallback: Kategorie-Header ("Alle Leichte/Schwere Waffen")
-      if (!$container) {
-        const $all = $h.find(`[data-key="${catKey}"], [data-key="weapon:${catKey}"]`);
-        if ($all.length) {
-          $container = $all.first().parent();
-          $tmpl = $container.find("li[data-key]")
-            .filter(function() { const k = _norm($(this).data("key") ?? ""); return k && k !== catKey; }).first();
-          if (!$tmpl.length)
-            $tmpl = $h.find("li[data-key]")
-              .filter(function() { const k = _norm($(this).data("key") ?? ""); return k && !["sim","mar"].includes(k); }).first();
-        }
-      }
-      if (!$container || !$tmpl) continue;
+      // Template-<li>: irgendeins aus der Liste (auch versteckte)
+      const $tmpl = $ol.find("li").filter(function () {
+        const n = $(this).find("dnd5e-checkbox[name*='.weaponProf.value.']")
+                          .not("[name*='.mastery.']").first().attr("name") ?? "";
+        const k = n.split(".").pop();
+        return k && k !== catKey;
+      }).first();
+      if (!$tmpl.length) continue;
 
-      const tmplKey = _norm($tmpl.data("key") ?? "");
-      const usesPfx = String($tmpl.data("key") ?? "").includes(":");
+      const tmplKey = ($tmpl.find("dnd5e-checkbox[name*='.weaponProf.value.']")
+                             .not("[name*='.mastery.']").first().attr("name") ?? "").split(".").pop();
 
       for (const [itemKey, itemData] of Object.entries(cat.items)) {
         const itemLabel = typeof itemData === "string" ? itemData : itemData.label;
-        if ($container.find(`[data-key="${catKey}:${itemKey}"], [data-key="${itemKey}"]`).length) continue;
-        const fullKey = usesPfx ? `${catKey}:${itemKey}` : itemKey;
+        // Bereits im DOM?
+        if ($ol.find(`dnd5e-checkbox[name$=".weaponProf.value.${itemKey}"]`).length) continue;
+
         const $new = $tmpl.clone(false);
-        $new.attr("data-key", fullKey);
-        $new.find("input, select").each(function() {
-          const $i = $(this), oldn = $i.attr("name") ?? "";
-          if (!oldn) return;
-          const newn = oldn
-            .replace(new RegExp(`\\.${tmplKey}\\.`, "g"), `.${itemKey}.`)
-            .replace(new RegExp(`(:)${tmplKey}(\\.|$)`, "g"), `$1${itemKey}$2`)
-            .replace(new RegExp(`\\.${tmplKey}$`, "g"), `.${itemKey}`);
-          $i.attr("name", newn).prop("checked", false).prop("selected", false);
-          if ($i.is("[type='radio']")) $i.val("0");
+        $new.find("label.name").first().text(itemLabel);
+        // Alle dnd5e-checkbox names aktualisieren (value + mastery)
+        $new.find("dnd5e-checkbox").each(function () {
+          const $cb = $(this);
+          const newName = ($cb.attr("name") ?? "")
+            .replace(new RegExp(`\\.${tmplKey}(\\.|$)`, "g"), `.${itemKey}$1`);
+          $cb.attr("name", newName);
         });
-        $new.find("label").not(":has(input)").first().text(itemLabel);
-        $new.find(".label, .name, .trait-label").not(":has(input)").first().text(itemLabel);
         $new.show();
-        $container.append($new);
+        $ol.append($new);
       }
     }
   }
@@ -915,15 +905,20 @@ Hooks.once("ready", function () {
     }
 
     if (trait === "weapon" || trait === "sim" || trait === "mar") {
-      $h.find("[data-key]").each(function () {
+      // WeaponsConfig (dnd5e 4.x AppV2): kein data-key, stattdessen
+      //   <li><label class="name">Club</label>
+      //       <dnd5e-checkbox name="system.traits.weaponProf.value.club"></dnd5e-checkbox>
+      $h.find("ol.trait-list li").each(function () {
         const $li = $(this);
-        const key = _norm($li.data("key") ?? "");
-        if (!key || ["sim", "mar"].includes(key)) return; // Kategorien behalten
+        const $cb = $li.find("dnd5e-checkbox[name*='.weaponProf.value.']")
+                        .not("[name*='.mastery.']").first();
+        if (!$cb.length) return;
+        const key = ($cb.attr("name") ?? "").split(".").pop();
+        if (!key || key === "sim" || key === "mar") return; // Kategorien behalten
         if (!KS_WEAPON_FLAT[key]) { $li.hide(); return; }
         $li.show();
-        $li.find("label").not(":has(input)").first().text(KS_WEAPON_FLAT[key]);
+        $li.find("label.name").first().text(KS_WEAPON_FLAT[key]);
       });
-      // Fehlende Items nachinjectieren (Strategie F)
       _injectMissingWeaponItems($h);
     }
 
