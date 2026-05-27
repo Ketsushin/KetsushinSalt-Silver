@@ -42,7 +42,8 @@ const KS_TOOLS = {
       klavier:   "Klavier",
       saxophon:  "Saxophon",
       trompete:  "Trompete",
-      triangel:  "Triangel"
+      triangel:  "Triangel",
+      geige:     "Geige"
     }
   },
   game: {
@@ -57,7 +58,9 @@ const KS_TOOLS = {
       mahjong:            "Mahjong",
       go:                 "Go",
       russischesRoulette: "Russisches Roulette",
-      shogi:              "Shogi"
+      shogi:              "Shogi",
+      uno:                "Uno",
+      monopoly:           "Monopoly"
     }
   },
   vehicle: {
@@ -263,6 +266,7 @@ Hooks.once("init", function () {
     saxophon:   "Compendium.ketsushin-salt-silver.items.Item.saxophon",
     trompete:   "Compendium.ketsushin-salt-silver.items.Item.trompete",
     triangel:   "Compendium.ketsushin-salt-silver.items.Item.triangel",
+    geige:      "Compendium.ketsushin-salt-silver.items.Item.geige",
 
     // Spielsets – ohne Dragonchess & Playing Cards
     dice:               "Compendium.ketsushin-salt-silver.items.Item.dice",
@@ -274,7 +278,9 @@ Hooks.once("init", function () {
     mahjong:            "Compendium.ketsushin-salt-silver.items.Item.mahjong",
     go:                 "Compendium.ketsushin-salt-silver.items.Item.go",
     russischesRoulette: "Compendium.ketsushin-salt-silver.items.Item.russischesRoulette",
-    shogi:              "Compendium.ketsushin-salt-silver.items.Item.shogi"
+    shogi:              "Compendium.ketsushin-salt-silver.items.Item.shogi",
+    uno:                "Compendium.ketsushin-salt-silver.items.Item.uno",
+    monopoly:           "Compendium.ketsushin-salt-silver.items.Item.monopoly"
   };
 
   // Sprachen
