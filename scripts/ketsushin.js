@@ -504,101 +504,221 @@ Hooks.on("renderActorSheet5eCharacter", function (sheet, html, _data) {
 });
 
 // =============================================================================
-// =============================================================================
 // Proficiency-Picker: deutsche Bezeichnungen für Waffen, Rüstungen & Werkzeuge
 //
-// Strategie A: fromUuid / fromUuidSync patchen (greift, wenn dnd5e den globalen
-//              Call nutzt – Standard in Foundry V12).
-// Strategie B: dnd5e.documents.Trait.choices direkt patchen – zuverlässigster
-//              Weg, umgeht lokale Imports und UUID-Caching vollständig.
+// Strategie A – fromUuid/fromUuidSync: synthetische Items für unsere UUIDs.
+// Strategie B – Trait.choices: direkter Patch auf dnd5e.documents.Trait.
+// Strategie C – dnd5e.buildTraitChoices: offizieller dnd5e-Modul-Hook (3.x).
+// Strategie D – DOM-Patch: greift für AppV1 UND AppV2 (Foundry V12).
 // =============================================================================
 Hooks.once("ready", function () {
   const MODULE_ID = "ketsushin-salt-silver";
 
-  // ── Strategie A: UUID → synthetisches Item-Objekt ────────────────────────
+  // Kategorie-Keys aus KS_TOOLS
+  const KS_CAT_KEYS = new Set(Object.keys(KS_TOOLS));
+
+  // Flache Key → Label Tabellen
+  const KS_TOOL_FLAT = {};
+  for (const cat of Object.values(KS_TOOLS))
+    for (const [k, v] of Object.entries(cat.items))
+      KS_TOOL_FLAT[k] = v;
+  const KS_TOOL_KEYS = new Set(Object.keys(KS_TOOL_FLAT));
+
+  const KS_WEAPON_FLAT = {};
+  for (const [k, v] of Object.entries(CONFIG.DND5E.simpleWeapons  ?? {})) KS_WEAPON_FLAT[k] = v.label;
+  for (const [k, v] of Object.entries(CONFIG.DND5E.martialWeapons ?? {})) KS_WEAPON_FLAT[k] = v.label;
+
+  const KS_ARMOR_FLAT = {};
+  for (const [k, v] of Object.entries(CONFIG.DND5E.armorTypes ?? {}))
+    KS_ARMOR_FLAT[k] = typeof v === "string" ? v : (v.label ?? k);
+
+  // ── Strategie A: fromUuid / fromUuidSync ────────────────────────────────
   const KS_SYNTH = {};
   for (const [catKey, cat] of Object.entries(KS_TOOLS)) {
     for (const [toolKey, toolName] of Object.entries(cat.items)) {
       const uuid = `Compendium.${MODULE_ID}.items.Item.${toolKey}`;
       KS_SYNTH[uuid] = {
-        id:           toolKey,
-        uuid,
-        documentName: "Item",
-        pack:         `${MODULE_ID}.items`,
-        name:         toolName,
-        type:         "tool",
-        system: {
-          type:       { value: catKey, subtype: "" },
-          proficient: null,
-          bonus:      ""
-        },
+        id: toolKey, uuid, documentName: "Item",
+        pack: `${MODULE_ID}.items`, name: toolName, type: "tool",
+        system: { type: { value: catKey, subtype: "" }, proficient: null, bonus: "" },
         toObject() { return foundry.utils.deepClone(this); },
         toJSON()   { return foundry.utils.deepClone(this); }
       };
     }
   }
-
   const _fromUuid = globalThis.fromUuid;
-  if (typeof _fromUuid === "function") {
-    globalThis.fromUuid = async function (uuid, options) {
-      return KS_SYNTH[uuid] ?? _fromUuid.call(this, uuid, options);
-    };
-  }
-
+  if (typeof _fromUuid === "function")
+    globalThis.fromUuid = async (uuid, opts) => KS_SYNTH[uuid] ?? _fromUuid(uuid, opts);
   const _fromUuidSync = globalThis.fromUuidSync;
-  if (typeof _fromUuidSync === "function") {
-    globalThis.fromUuidSync = function (uuid, options) {
-      return KS_SYNTH[uuid] ?? _fromUuidSync.call(this, uuid, options);
-    };
-  }
+  if (typeof _fromUuidSync === "function")
+    globalThis.fromUuidSync = (uuid, opts) => KS_SYNTH[uuid] ?? _fromUuidSync(uuid, opts);
 
-  // ── Strategie B: dnd5e.documents.Trait.choices patchen ───────────────────
+  // ── Strategie B: Trait.choices patch ───────────────────────────────────
   const Trait = globalThis.dnd5e?.documents?.Trait;
   if (Trait?.choices) {
     const _choices = Trait.choices;
     Trait.choices = async function (trait, opts = {}) {
-
-      // Werkzeuge
       if (trait === "tool") {
-        const result = {};
-        for (const [catKey, cat] of Object.entries(KS_TOOLS)) {
-          result[catKey] = {
-            label:    cat.label,
-            children: Object.fromEntries(
-              Object.entries(cat.items).map(([k, v]) => [k, { label: v }])
-            )
-          };
-        }
-        return result;
+        const r = {};
+        for (const [ck, cat] of Object.entries(KS_TOOLS))
+          r[ck] = { label: cat.label, children: Object.fromEntries(Object.entries(cat.items).map(([k, v]) => [k, { label: v }])) };
+        return r;
       }
-
-      // Waffenbeherrschungen
       if (trait === "weapon") {
         const sim = {}, mar = {};
-        for (const [k, v] of Object.entries(CONFIG.DND5E.simpleWeapons  ?? {}))
-          sim[k] = { label: v.label };
-        for (const [k, v] of Object.entries(CONFIG.DND5E.martialWeapons ?? {}))
-          mar[k] = { label: v.label };
-        return {
-          sim: { label: "Leichte Waffen", children: sim },
-          mar: { label: "Schwere Waffen", children: mar }
-        };
+        for (const [k, v] of Object.entries(CONFIG.DND5E.simpleWeapons  ?? {})) sim[k] = { label: v.label };
+        for (const [k, v] of Object.entries(CONFIG.DND5E.martialWeapons ?? {})) mar[k] = { label: v.label };
+        return { sim: { label: "Leichte Waffen", children: sim }, mar: { label: "Schwere Waffen", children: mar } };
       }
-
-      // Rüstungsbeherrschungen
       if (trait === "armor") {
-        const result = {};
-        for (const [k, v] of Object.entries(CONFIG.DND5E.armorTypes ?? {}))
-          result[k] = { label: typeof v === "string" ? v : (v.label ?? k) };
-        return result;
+        return Object.fromEntries(Object.entries(KS_ARMOR_FLAT).map(([k, v]) => [k, { label: v }]));
       }
-
       return _choices.call(this, trait, opts);
     };
-    console.log("Ketsushin | dnd5e.documents.Trait.choices erfolgreich gepatcht.");
-  } else {
-    console.warn("Ketsushin | dnd5e.documents.Trait nicht gefunden – nur fromUuid-Patch aktiv.");
   }
 
-  console.log(`Ketsushin | ${Object.keys(KS_SYNTH).length} Werkzeuge als synthetische Items registriert.`);
+  // ── Strategie C: dnd5e.buildTraitChoices (offizieller dnd5e 3.x API-Hook)
+  // Signatur je nach Version: (choices, {trait,...}) oder (trait, choices)
+  Hooks.on("dnd5e.buildTraitChoices", function (a, b) {
+    // Argument-Reihenfolge flexibel behandeln
+    const trait   = typeof a === "string" ? a : (b?.trait ?? a?.trait ?? "");
+    const choices = typeof a === "object"  ? a : b;
+    if (!choices || typeof choices !== "object") return;
+
+    if (trait === "tool") {
+      for (const key of Object.keys(choices)) delete choices[key];
+      for (const [catKey, cat] of Object.entries(KS_TOOLS))
+        choices[catKey] = {
+          label:    cat.label,
+          children: Object.fromEntries(Object.entries(cat.items).map(([k, v]) => [k, { label: v }]))
+        };
+    }
+    else if (trait === "weapon") {
+      for (const key of Object.keys(choices)) delete choices[key];
+      const sim = {}, mar = {};
+      for (const [k, v] of Object.entries(CONFIG.DND5E.simpleWeapons  ?? {})) sim[k] = { label: v.label };
+      for (const [k, v] of Object.entries(CONFIG.DND5E.martialWeapons ?? {})) mar[k] = { label: v.label };
+      choices.sim = { label: "Leichte Waffen", children: sim };
+      choices.mar = { label: "Schwere Waffen", children: mar };
+    }
+    else if (trait === "armor") {
+      for (const key of Object.keys(choices)) delete choices[key];
+      for (const [k, v] of Object.entries(KS_ARMOR_FLAT)) choices[k] = { label: v };
+    }
+  });
+
+  // ── Strategie D: DOM-Patch (AppV1 jQuery + AppV2 HTMLElement) ───────────
+  // Normalisiert alle denkbaren Key-Formate auf den reinen Schlüssel:
+  //   "tool:alchemist"            → "alchemist"
+  //   "weapon:sim"                → "sim"
+  //   "system.tools.chess.value"  → "chess"
+  function _norm(raw) {
+    return String(raw ?? "")
+      .replace(/^(?:tool|weapon|armor|language):/, "")
+      .replace(/^.*\.tools\./, "")
+      .replace(/^.*\.weapons\./, "")
+      .replace(/^.*\.armor\./, "")
+      .replace(/\.value$/, "")
+      .trim();
+  }
+
+  // Gibt ein jQuery-Objekt zurück, egal ob AppV1 oder AppV2
+  function _$el(el) {
+    if (!el) return $();
+    if (el instanceof jQuery) return el;
+    if (el instanceof Element) return $(el);
+    try { return $(el); } catch { return $(); }
+  }
+
+  function patchDialog($h, trait) {
+    if (!$h.length) return;
+
+    if (trait === "tool") {
+      $h.find("li[data-key], [data-key]").each(function () {
+        const $li = $(this);
+        const key = _norm($li.data("key") ?? "");
+        if (!key) return;
+        if (KS_CAT_KEYS.has(key)) return;             // Kategorie-Zeile behalten
+        if (!KS_TOOL_KEYS.has(key)) { $li.hide(); return; }
+        $li.show();
+        $li.find("label").not(":has(input)").first().text(KS_TOOL_FLAT[key]);
+      });
+      // dnd5e 2.x Fallback: input[name*=".tools."]
+      $h.find("input[name*='.tools.']").each(function () {
+        const $row = $(this).closest("li, .form-group, tr");
+        const key  = _norm($(this).attr("name") ?? "");
+        if (!KS_TOOL_KEYS.has(key)) { $row.hide(); return; }
+        $row.show();
+        $row.find("label").not(":has(input)").first().text(KS_TOOL_FLAT[key]);
+      });
+    }
+
+    if (trait === "weapon") {
+      $h.find("li[data-key]").each(function () {
+        const $li = $(this);
+        const key = _norm($li.data("key") ?? "");
+        if (!key || ["sim", "mar"].includes(key)) return; // Kategorien behalten
+        if (!KS_WEAPON_FLAT[key]) { $li.hide(); return; }
+        $li.show();
+        $li.find("label").not(":has(input)").first().text(KS_WEAPON_FLAT[key]);
+      });
+    }
+
+    if (trait === "armor") {
+      $h.find("li[data-key]").each(function () {
+        const $li = $(this);
+        const key = _norm($li.data("key") ?? "");
+        if (!key) return;
+        if (KS_ARMOR_FLAT[key]) {
+          $li.show();
+          $li.find("label").not(":has(input)").first().text(KS_ARMOR_FLAT[key]);
+        } else if (!["light", "medium", "heavy", "shield"].includes(key)) {
+          $li.hide();
+        }
+      });
+    }
+  }
+
+  function _trait(app, data) {
+    return data?.trait ?? data?.attribute
+      ?? app?.options?.trait ?? app?.options?.attribute
+      ?? app?.attribute ?? app?.trait ?? "";
+  }
+
+  // Alle möglichen Render-Hook-Namen (AppV1 + AppV2 + dnd5e-spezifisch)
+  const RENDER_HOOKS = [
+    "renderApplication",          // AppV1 generisch
+    "renderApplicationV2",        // AppV2 generisch (Foundry V12)
+    "renderProficiencyConfig",    // dnd5e 3.x
+    "renderTraitSelector",        // dnd5e 2.x
+    "renderActorTraitConfig",     // möglicher Alias
+    "renderTraitConfig",
+  ];
+
+  for (const hookName of RENDER_HOOKS) {
+    Hooks.on(hookName, (app, el, data) => {
+      const $h = _$el(el);
+      if (!$h.length) return;
+
+      // Trait aus App-Optionen oder Daten ermitteln
+      let trait = _trait(app, data);
+
+      // Fallback: Trait aus data-key-Einträgen im HTML ableiten
+      if (!trait) {
+        if ($h.find("[data-key*='tool']").length)   trait = "tool";
+        else if ($h.find("[data-key*='weapon']").length) trait = "weapon";
+        else if ($h.find("[data-key*='armor']").length)  trait = "armor";
+        else if ($h.find("input[name*='.tools.']").length) trait = "tool";
+      }
+
+      if (trait) patchDialog($h, trait);
+    });
+  }
+
+  console.log(
+    `Ketsushin | v0.1.4 bereit. ` +
+    `Trait.choices: ${Trait?.choices ? "gepatcht ✓" : "nicht gefunden"} | ` +
+    `buildTraitChoices: registriert ✓ | DOM-Hooks: ${RENDER_HOOKS.length} registriert ✓`
+  );
 });
+
