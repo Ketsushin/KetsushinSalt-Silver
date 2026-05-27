@@ -151,6 +151,8 @@ Hooks.once("init", function () {
 
   // Werkzeuge – Platzhalter-UUIDs, nach Kompendium-Erstellung anpassen
   CONFIG.DND5E.toolIds = {
+
+    // Handwerkszeug (Artisan's Tools)
     alchemist:    "Compendium.ketsushin-salt-silver.items.Item.alchemist",
     brewer:       "Compendium.ketsushin-salt-silver.items.Item.brewer",
     calligrapher: "Compendium.ketsushin-salt-silver.items.Item.calligrapher",
@@ -169,7 +171,40 @@ Hooks.once("init", function () {
     weaver:       "Compendium.ketsushin-salt-silver.items.Item.weaver",
     woodcarver:   "Compendium.ketsushin-salt-silver.items.Item.woodcarver",
     mechanic:     "Compendium.ketsushin-salt-silver.items.Item.mechanic",
-    locksmith:    "Compendium.ketsushin-salt-silver.items.Item.locksmith"
+    locksmith:    "Compendium.ketsushin-salt-silver.items.Item.locksmith",
+
+    // Fahrzeuge – kein Raumfahrzeug
+    airVehicle:   "Compendium.ketsushin-salt-silver.items.Item.airVehicle",
+    landVehicle:  "Compendium.ketsushin-salt-silver.items.Item.landVehicle",
+    waterVehicle: "Compendium.ketsushin-salt-silver.items.Item.waterVehicle",
+
+    // Instrumente
+    bagpipe:    "Compendium.ketsushin-salt-silver.items.Item.bagpipe",
+    drum:       "Compendium.ketsushin-salt-silver.items.Item.drum",
+    dulcimer:   "Compendium.ketsushin-salt-silver.items.Item.dulcimer",
+    flute:      "Compendium.ketsushin-salt-silver.items.Item.flute",
+    horn:       "Compendium.ketsushin-salt-silver.items.Item.horn",
+    lute:       "Compendium.ketsushin-salt-silver.items.Item.lute",
+    lyre:       "Compendium.ketsushin-salt-silver.items.Item.lyre",
+    panflute:   "Compendium.ketsushin-salt-silver.items.Item.panflute",
+    shawm:      "Compendium.ketsushin-salt-silver.items.Item.shawm",
+    viol:       "Compendium.ketsushin-salt-silver.items.Item.viol",
+    klavier:    "Compendium.ketsushin-salt-silver.items.Item.klavier",
+    saxophon:   "Compendium.ketsushin-salt-silver.items.Item.saxophon",
+    trompete:   "Compendium.ketsushin-salt-silver.items.Item.trompete",
+    triangel:   "Compendium.ketsushin-salt-silver.items.Item.triangel",
+
+    // Spielsets – ohne Dragonchess & Playing Cards
+    dice:               "Compendium.ketsushin-salt-silver.items.Item.dice",
+    threedragons:       "Compendium.ketsushin-salt-silver.items.Item.threedragons",
+    poker:              "Compendium.ketsushin-salt-silver.items.Item.poker",
+    blackjack:          "Compendium.ketsushin-salt-silver.items.Item.blackjack",
+    schach:             "Compendium.ketsushin-salt-silver.items.Item.schach",
+    dame:               "Compendium.ketsushin-salt-silver.items.Item.dame",
+    mahjong:            "Compendium.ketsushin-salt-silver.items.Item.mahjong",
+    go:                 "Compendium.ketsushin-salt-silver.items.Item.go",
+    russischesRoulette: "Compendium.ketsushin-salt-silver.items.Item.russischesRoulette",
+    shogi:              "Compendium.ketsushin-salt-silver.items.Item.shogi"
   };
 
   // Sprachen
