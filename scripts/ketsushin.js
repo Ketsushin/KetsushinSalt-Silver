@@ -335,7 +335,6 @@ Hooks.once("init", function () {
     machete:        { label: "Machete",           type: "simpleM" },
     stab:           { label: "Stab",              type: "simpleM" },
     sichel:         { label: "Sichel",            type: "simpleM" },
-    streitkolben:   { label: "Streitkolben",      type: "simpleM" },
     leichtArmbrust: { label: "Leichte Armbrust",  type: "simpleR" },
     leichtHammer:   { label: "Leichter Hammer",   type: "simpleR" },
     kurzbogen:      { label: "Kurzbogen",         type: "simpleR" },
@@ -344,15 +343,14 @@ Hooks.once("init", function () {
   };
 
   CONFIG.DND5E.martialWeapons = {
-    kampfaxt:      { label: "Kampfaxt",          type: "martialM" },
     schwert:       { label: "Schwert",           type: "martialM" },
-    hammer:        { label: "Hammer",            type: "martialM" },
+    hammer:        { label: "Hämmer",            type: "martialM" },
     peitsche:      { label: "Peitsche",          type: "martialM" },
     rapier:        { label: "Rapier",            type: "martialM" },
     saebel:        { label: "Säbel",             type: "martialM" },
     flegel:        { label: "Flegel",            type: "martialM" },
     schwerPistole: { label: "Schwere Pistole",   type: "martialR" },
-    gewehr:        { label: "Gewehr",            type: "martialR" },
+    gewehr:        { label: "Gewehre",           type: "martialR" },
     schwerArmbrust:{ label: "Schwere Armbrust",  type: "martialR" },
     langbogen:     { label: "Langbogen",         type: "martialR" }
   };
@@ -657,14 +655,212 @@ Hooks.once("ready", function () {
     }
   });
 
-  // ── Strategie D: DOM-Patch (AppV1 jQuery + AppV2 HTMLElement) ───────────
+  // ── Strategie E: Trait.getBaseItems + ProficiencyConfig._prepareContext ──
+  // (Greift wenn Strategie B/C scheitert – neue direkte Eingriffe)
+
+  // E1: getBaseItems – liefert unsere synthetischen Items statt Compendium
+  if (Trait?.getBaseItems) {
+    const _gbi = Trait.getBaseItems;
+    Trait.getBaseItems = async function (trait, opts) {
+      if (trait === "tool") {
+        const items = [];
+        for (const [catKey, cat] of Object.entries(KS_TOOLS))
+          for (const [key, name] of Object.entries(cat.items))
+            items.push({ identifier: key, name, type: "tool",
+                         system: { type: { value: catKey } } });
+        return items;
+      }
+      if (trait === "sim" || trait === "weapon") {
+        const items = Object.entries(CONFIG.DND5E.simpleWeapons ?? {}).map(([k, v]) =>
+          ({ identifier: k, name: v.label, type: "weapon", system: { type: { value: "sim" } } }));
+        if (trait === "weapon") items.push(...Object.entries(CONFIG.DND5E.martialWeapons ?? {}).map(([k, v]) =>
+          ({ identifier: k, name: v.label, type: "weapon", system: { type: { value: "mar" } } })));
+        return items;
+      }
+      if (trait === "mar") {
+        return Object.entries(CONFIG.DND5E.martialWeapons ?? {}).map(([k, v]) =>
+          ({ identifier: k, name: v.label, type: "weapon", system: { type: { value: "mar" } } }));
+      }
+      return _gbi.call(this, trait, opts);
+    };
+    console.log("KS | Trait.getBaseItems gepatcht ✓");
+  }
+
+  // E2: ProficiencyConfig._prepareContext – ersetzt ctx.choices komplett
+  const PC = globalThis.dnd5e?.applications?.actor?.ProficiencyConfig;
+  function _buildKsChoices(trait) {
+    if (trait === "tool") {
+      const c = {};
+      for (const [ck, cat] of Object.entries(KS_TOOLS))
+        c[ck] = { label: cat.label,
+                  children: Object.fromEntries(Object.entries(cat.items).map(([k,v]) => [k, {label:v}])) };
+      return c;
+    }
+    if (trait === "weapon") {
+      const sim = {}, mar = {};
+      for (const [k,v] of Object.entries(CONFIG.DND5E.simpleWeapons  ?? {})) sim[k] = {label: v.label};
+      for (const [k,v] of Object.entries(CONFIG.DND5E.martialWeapons ?? {})) mar[k] = {label: v.label};
+      return { sim: { label: "Leichte Waffen", children: sim },
+               mar: { label: "Schwere Waffen",  children: mar } };
+    }
+    if (trait === "sim") {
+      return { sim: { label: "Leichte Waffen",
+        children: Object.fromEntries(Object.entries(CONFIG.DND5E.simpleWeapons  ?? {}).map(([k,v]) => [k, {label:v.label}])) } };
+    }
+    if (trait === "mar") {
+      return { mar: { label: "Schwere Waffen",
+        children: Object.fromEntries(Object.entries(CONFIG.DND5E.martialWeapons ?? {}).map(([k,v]) => [k, {label:v.label}])) } };
+    }
+    if (trait === "armor") {
+      return Object.fromEntries(
+        Object.entries(CONFIG.DND5E.armorTypes ?? {}).map(([k,v]) => [k, {label: typeof v === "string" ? v : (v.label ?? k)}])
+      );
+    }
+    return null;
+  }
+  if (PC) {
+    for (const methodName of ["_prepareContext", "getData"]) {
+      if (PC.prototype[methodName]) {
+        const _orig = PC.prototype[methodName];
+        PC.prototype[methodName] = async function (options) {
+          const ctx = await _orig.call(this, options);
+          const trait = this.trait ?? this.attribute
+            ?? this.options?.trait ?? this.options?.attribute ?? "";
+          const ks = _buildKsChoices(trait);
+          if (ks) ctx.choices = ks;
+          return ctx;
+        };
+        console.log(`KS | ProficiencyConfig.${methodName} gepatcht ✓`);
+        break;
+      }
+    }
+  } else {
+    console.warn("KS | ProficiencyConfig nicht gefunden – nur DOM-Patch aktiv");
+  }
+
+  // ── Strategie F: DOM-Injection – fügt fehlende Items in die Liste ein ──
+  // Greift wenn die data-Ebene nicht überschrieben werden konnte.
+  function _injectMissingWeaponItems($h) {
+    const cats = {
+      sim: { items: CONFIG.DND5E.simpleWeapons  ?? {} },
+      mar: { items: CONFIG.DND5E.martialWeapons ?? {} }
+    };
+    for (const [catKey, cat] of Object.entries(cats)) {
+      let $container = null, $tmpl = null;
+
+      // Container über vorhandene Items dieser Kategorie finden
+      for (const itemKey of Object.keys(cat.items)) {
+        const $f = $h.find(`[data-key="${catKey}:${itemKey}"], [data-key="${itemKey}"]`);
+        if ($f.length) { $container = $f.first().parent(); $tmpl = $f.first(); break; }
+      }
+      // Fallback: Kategorie-Header ("Alle Leichte/Schwere Waffen")
+      if (!$container) {
+        const $all = $h.find(`[data-key="${catKey}"], [data-key="weapon:${catKey}"]`);
+        if ($all.length) {
+          $container = $all.first().parent();
+          $tmpl = $container.find("li[data-key]")
+            .filter(function() { const k = _norm($(this).data("key") ?? ""); return k && k !== catKey; }).first();
+          if (!$tmpl.length)
+            $tmpl = $h.find("li[data-key]")
+              .filter(function() { const k = _norm($(this).data("key") ?? ""); return k && !["sim","mar"].includes(k); }).first();
+        }
+      }
+      if (!$container || !$tmpl) continue;
+
+      const tmplKey = _norm($tmpl.data("key") ?? "");
+      const usesPfx = String($tmpl.data("key") ?? "").includes(":");
+
+      for (const [itemKey, itemData] of Object.entries(cat.items)) {
+        const itemLabel = typeof itemData === "string" ? itemData : itemData.label;
+        if ($container.find(`[data-key="${catKey}:${itemKey}"], [data-key="${itemKey}"]`).length) continue;
+        const fullKey = usesPfx ? `${catKey}:${itemKey}` : itemKey;
+        const $new = $tmpl.clone(false);
+        $new.attr("data-key", fullKey);
+        $new.find("input, select").each(function() {
+          const $i = $(this), oldn = $i.attr("name") ?? "";
+          if (!oldn) return;
+          const newn = oldn
+            .replace(new RegExp(`\\.${tmplKey}\\.`, "g"), `.${itemKey}.`)
+            .replace(new RegExp(`(:)${tmplKey}(\\.|$)`, "g"), `$1${itemKey}$2`)
+            .replace(new RegExp(`\\.${tmplKey}$`, "g"), `.${itemKey}`);
+          $i.attr("name", newn).prop("checked", false).prop("selected", false);
+          if ($i.is("[type='radio']")) $i.val("0");
+        });
+        $new.find("label").not(":has(input)").first().text(itemLabel);
+        $new.find(".label, .name, .trait-label").not(":has(input)").first().text(itemLabel);
+        $new.show();
+        $container.append($new);
+      }
+    }
+  }
+
+  function _injectMissingToolItems($h) {
+    for (const [catKey, cat] of Object.entries(KS_TOOLS)) {
+      let $container = null;
+      let $tmpl = null;
+
+      // Container via vorhandene Items dieser Kategorie finden
+      for (const itemKey of Object.keys(cat.items)) {
+        const $f = $h.find(`[data-key="tool:${itemKey}"], [data-key="${itemKey}"]`);
+        if ($f.length) { $container = $f.first().parent(); $tmpl = $f.first(); break; }
+      }
+
+      // Fallback: Container via Kategorie-Header ("Alle X") finden
+      if (!$container) {
+        const $all = $h.find(`[data-key="tool:${catKey}"], [data-key="${catKey}"]`);
+        if ($all.length) {
+          $container = $all.first().parent();
+          // Template aus anderem Container holen
+          $tmpl = $h.find("li[data-key]")
+            .filter(function () {
+              const k = _norm($(this).data("key") ?? "");
+              return k && !KS_CAT_KEYS.has(k);
+            }).first();
+        }
+      }
+      if (!$container || !$tmpl) continue;
+
+      const tmplKey  = _norm($tmpl.data("key") ?? "");
+      const usesPfx  = String($tmpl.data("key") ?? "").includes(":");
+
+      for (const [itemKey, itemLabel] of Object.entries(cat.items)) {
+        // Bereits im DOM?
+        if ($container.find(`[data-key="tool:${itemKey}"], [data-key="${itemKey}"]`).length) continue;
+
+        const fullKey = usesPfx ? `tool:${itemKey}` : itemKey;
+        const $new = $tmpl.clone(false);
+        $new.attr("data-key", fullKey);
+
+        // Input-Namen anpassen (z.B. "system.tools.drum.value" → "system.tools.mechanic.value")
+        $new.find("input, select").each(function () {
+          const $i   = $(this);
+          const oldn = $i.attr("name") ?? "";
+          if (!oldn) return;
+          const newn = oldn
+            .replace(new RegExp(`\\.${tmplKey}\\.`, "g"), `.${itemKey}.`)
+            .replace(new RegExp(`(:)${tmplKey}(\\.|$)`, "g"), `$1${itemKey}$2`)
+            .replace(new RegExp(`\\.${tmplKey}$`, "g"), `.${itemKey}`);
+          $i.attr("name", newn).prop("checked", false).prop("selected", false);
+          if ($i.is("[type='radio']")) $i.val("0");
+        });
+
+        // Label setzen
+        $new.find("label").not(":has(input)").first().text(itemLabel);
+        $new.find(".label, .name, .trait-label, [data-tooltip]").not(":has(input)").first().text(itemLabel);
+        $new.show();
+        $container.append($new);
+      }
+    }
+  }
+
+
   // Normalisiert alle denkbaren Key-Formate auf den reinen Schlüssel:
   //   "tool:alchemist"            → "alchemist"
   //   "weapon:sim"                → "sim"
   //   "system.tools.chess.value"  → "chess"
   function _norm(raw) {
     return String(raw ?? "")
-      .replace(/^(?:tool|weapon|armor|language):/, "")
+      .replace(/^(?:tool|weapon|armor|language|sim|mar):/, "")
       .replace(/^.*\.tools\./, "")
       .replace(/^.*\.weapons\./, "")
       .replace(/^.*\.armor\./, "")
@@ -701,10 +897,12 @@ Hooks.once("ready", function () {
         $row.show();
         $row.find("label").not(":has(input)").first().text(KS_TOOL_FLAT[key]);
       });
+      // Fehlende Items nachinjectieren (Strategie F)
+      _injectMissingToolItems($h);
     }
 
-    if (trait === "weapon") {
-      $h.find("li[data-key]").each(function () {
+    if (trait === "weapon" || trait === "sim" || trait === "mar") {
+      $h.find("[data-key]").each(function () {
         const $li = $(this);
         const key = _norm($li.data("key") ?? "");
         if (!key || ["sim", "mar"].includes(key)) return; // Kategorien behalten
@@ -712,6 +910,8 @@ Hooks.once("ready", function () {
         $li.show();
         $li.find("label").not(":has(input)").first().text(KS_WEAPON_FLAT[key]);
       });
+      // Fehlende Items nachinjectieren (Strategie F)
+      _injectMissingWeaponItems($h);
     }
 
     if (trait === "armor") {
@@ -753,13 +953,23 @@ Hooks.once("ready", function () {
       // Trait aus App-Optionen oder Daten ermitteln
       let trait = _trait(app, data);
 
+      // Diagnose: logge jeden Dialog mit [data-key]-Elementen
+      const $keys = $h.find("[data-key]");
+      if ($keys.length) {
+        const sample = [...$keys].slice(0, 6).map(e => e.getAttribute("data-key")).join(", ");
+        console.log(`KS | ${hookName} | app=${app?.constructor?.name} | trait="${trait}" | app.attr="${app?.attribute}" | opts.attr="${app?.options?.attribute}" | ctx.trait="${data?.trait}" | keys: ${sample}`);
+      }
+
       // Fallback: Trait aus data-key-Einträgen im HTML ableiten
       if (!trait) {
         if ($h.find("[data-key*='tool']").length)   trait = "tool";
-        else if ($h.find("[data-key*='weapon']").length) trait = "weapon";
+        else if ($h.find("[data-key*='weapon'], [data-key='sim'], [data-key^='sim:'], [data-key='mar'], [data-key^='mar:']").length) trait = "weapon";
         else if ($h.find("[data-key*='armor']").length)  trait = "armor";
         else if ($h.find("input[name*='.tools.']").length) trait = "tool";
       }
+
+      // "sim"/"mar" → "weapon" normalisieren
+      if (trait === "sim" || trait === "mar") trait = "weapon";
 
       if (trait) patchDialog($h, trait);
     });
