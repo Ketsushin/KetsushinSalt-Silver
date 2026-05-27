@@ -1,20 +1,6 @@
-/**
- * Ketsushin: Salt & Silver
- * Modul-Initialisierung & CONFIG.DND5E Overrides
- */
+// Ketsushin: Salt & Silver
 
-// =============================================================================
-// Währungsumrechnung – Kurse, Berechnungsfunktion & Dialog-Klasse
-// =============================================================================
-
-/**
- * Umrechnungskurse relativ zu EUR.
- * Bedeutung: wie viele Einheiten der Währung entsprechen 1 EUR.
- *   1 EUR = 1   USD
- *   1 EUR = 10  CNY
- *   1 EUR = 100 JPY
- *   1 EUR = 100 RUB
- */
+// Umrechnungskurse: Einheiten pro 1 EUR
 const KS_EXCHANGE_RATES = {
   eur: 1,
   usd: 1.0,
@@ -23,33 +9,14 @@ const KS_EXCHANGE_RATES = {
   rub: 100.0
 };
 
-/**
- * Rechnet einen Betrag von einer Währung in eine andere um.
- * Rechenweg: Quelle → EUR → Ziel (EUR als Anker).
- * Das Ergebnis wird abgerundet (keine Bruchteile).
- *
- * @param {number} amount - Quellbetrag (positiv, ganzzahlig)
- * @param {string} from   - Schlüssel der Quellwährung (z. B. "jpy")
- * @param {string} to     - Schlüssel der Zielwährung   (z. B. "usd")
- * @returns {number} Ganzzahliger Zielbetrag
- */
+
 function ksConvertCurrency(amount, from, to) {
   if (from === to) return amount;
   const amountInEur = amount / KS_EXCHANGE_RATES[from];
   return Math.floor(amountInEur * KS_EXCHANGE_RATES[to]);
 }
 
-/**
- * Foundry-Dialog für den Währungs-Umtausch.
- * Öffnet ein Formular mit Von-/In-Dropdown und Mengen-Feld.
- * Zieht den Betrag vom aktiven Konto ab und schreibt das Ergebnis gut.
- */
 class KetsushinExchangeDialog extends Dialog {
-  /**
-   * @param {Actor}         actor    - Der betroffene Charakter
-   * @param {string}        mode     - "wallet" | "bank"
-   * @param {Function|null} onUpdate - Callback nach erfolgreichem Tausch
-   */
   constructor(actor, mode, onUpdate = null) {
     const opts = [
       { key: "eur", label: "€ EUR" },
@@ -102,7 +69,6 @@ class KetsushinExchangeDialog extends Dialog {
     this._onUpdate = onUpdate;
   }
 
-  /** Bindet Live-Vorschau: aktualisiert die Ergebnis-Zeile bei jeder Änderung. */
   static _bindPreview(html) {
     const refresh = () => {
       const from   = html.find("[name='from']").val();
@@ -119,14 +85,6 @@ class KetsushinExchangeDialog extends Dialog {
     refresh();
   }
 
-  /**
-   * Führt den Tausch durch:
-   *  1. Eingaben validieren
-   *  2. Deckung prüfen
-   *  3. Betrag abziehen, Ergebnis gutschreiben
-   *  4. Flags aktualisieren
-   *  5. onUpdate-Callback aufrufen
-   */
   static async _onConfirm(html, actor, mode, onUpdate) {
     const MODULE_ID = "ketsushin-salt-silver";
     const from      = html.find("[name='from']").val();
@@ -167,16 +125,9 @@ class KetsushinExchangeDialog extends Dialog {
   }
 }
 
-// =============================================================================
-
 Hooks.once("init", function () {
-  console.log("Ketsushin: Salt & Silver | Modul wird initialisiert...");
 
-  // -------------------------------------------------------------------------
-  // Fertigkeiten (Skills)
-  // Ersetzt alle Standard-D&D-Fertigkeiten vollständig.
-  // Fähigkeitszuordnungen: str, dex, con, int, wis, cha
-  // -------------------------------------------------------------------------
+  // Fertigkeiten
   CONFIG.DND5E.skills = {
     akr: { label: "Akrobatik",        ability: "dex", fullKey: "akrobatik" },
     ath: { label: "Athletik",          ability: "str", fullKey: "athletik" },
@@ -198,11 +149,7 @@ Hooks.once("init", function () {
     wah: { label: "Wahrnehmung",       ability: "wis", fullKey: "wahrnehmung" }
   };
 
-  // -------------------------------------------------------------------------
-  // Werkzeuge (Tool IDs)
-  // Verweist auf Kompendium-Einträge dieses Moduls.
-  // Platzhalter-UUIDs – müssen nach Kompendium-Erstellung aktualisiert werden.
-  // -------------------------------------------------------------------------
+  // Werkzeuge – Platzhalter-UUIDs, nach Kompendium-Erstellung anpassen
   CONFIG.DND5E.toolIds = {
     alchemist:    "Compendium.ketsushin-salt-silver.items.Item.alchemist",
     brewer:       "Compendium.ketsushin-salt-silver.items.Item.brewer",
@@ -225,10 +172,7 @@ Hooks.once("init", function () {
     locksmith:    "Compendium.ketsushin-salt-silver.items.Item.locksmith"
   };
 
-  // -------------------------------------------------------------------------
-  // Sprachen (Languages)
-  // Flache Struktur – keine Dialekte oder Exotensprachen-Kategorien.
-  // -------------------------------------------------------------------------
+  // Sprachen
   CONFIG.DND5E.languages = {
     eng: { label: "Englisch" },
     deu: { label: "Deutsch" },
@@ -244,10 +188,7 @@ Hooks.once("init", function () {
     lat: { label: "Latein" }
   };
 
-  // -------------------------------------------------------------------------
-  // Rüstungsklassen (Armor Classes / Armor Types)
-  // Alle Fantasy-Rüstungen entfernt. Nur realistische Kategorien.
-  // -------------------------------------------------------------------------
+  // Rüstungen
   CONFIG.DND5E.armorClasses = {
     clothing: { label: "Normale Kleidung", formula: "10 + @abilities.dex.mod" },
     light:    { label: "Leichte Rüstung",  formula: "11 + @abilities.dex.mod" },
@@ -262,10 +203,7 @@ Hooks.once("init", function () {
     shield:   "Schild"
   };
 
-  // -------------------------------------------------------------------------
-  // Waffenfertigkeiten & Waffentypen (Weapon Proficiencies / Weapon Types)
-  // Aufgeteilt in Leichte und Schwere Waffen.
-  // -------------------------------------------------------------------------
+  // Waffen
   CONFIG.DND5E.weaponProficiencies = {
     sim: "Leichte Waffen",
     mar: "Schwere Waffen"
@@ -278,7 +216,6 @@ Hooks.once("init", function () {
     martialR:  "Schwere Fernkampfwaffe"
   };
 
-  // Leichte Waffen (Simple)
   CONFIG.DND5E.simpleWeapons = {
     keule:          { label: "Keule",             type: "simpleM" },
     dolch:          { label: "Dolch",             type: "simpleM" },
@@ -295,7 +232,6 @@ Hooks.once("init", function () {
     schleuder:      { label: "Schleuder",         type: "simpleR" }
   };
 
-  // Schwere Waffen (Martial)
   CONFIG.DND5E.martialWeapons = {
     kampfaxt:      { label: "Kampfaxt",          type: "martialM" },
     schwert:       { label: "Schwert",           type: "martialM" },
@@ -310,9 +246,7 @@ Hooks.once("init", function () {
     langbogen:     { label: "Langbogen",         type: "martialR" }
   };
 
-  // -------------------------------------------------------------------------
-  // Schadensarten (Damage Types)
-  // -------------------------------------------------------------------------
+  // Schadensarten
   CONFIG.DND5E.damageTypes = {
     slashing:   { label: "Hieb",              icon: "icons/svg/sword.svg" },
     piercing:   { label: "Stich",             icon: "icons/svg/dagger.svg" },
@@ -329,19 +263,13 @@ Hooks.once("init", function () {
     psychic:    { label: "Psychisch",         icon: "icons/svg/psychic.svg" }
   };
 
-  // -------------------------------------------------------------------------
-  // Waffeneigenschaften (Weapon Properties)
-  // Nur 'Magisch/Geheiligt' und 'Versilbert' behalten.
-  // -------------------------------------------------------------------------
+  // Waffeneigenschaften
   CONFIG.DND5E.weaponProperties = {
     mgc: { label: "Magisch/Geheiligt", abbreviation: "Mag" },
     sil: { label: "Versilbert",        abbreviation: "Sil" }
   };
 
-  // -------------------------------------------------------------------------
-  // Währungen (Currencies)
-  // Alle DnD-Standardwährungen (gp, sp, cp …) werden ersetzt.
-  // -------------------------------------------------------------------------
+  // Währungen
   CONFIG.DND5E.currencies = {
     eur: { label: "Euro",              abbreviation: "€",  conversion: 1     },
     usd: { label: "US-Dollar",         abbreviation: "$",  conversion: 1     },
@@ -353,21 +281,12 @@ Hooks.once("init", function () {
   console.log("Ketsushin: Salt & Silver | CONFIG.DND5E erfolgreich überschrieben.");
 });
 
-// =============================================================================
-// UI-Anpassung: Charakterbogen – Zauber → Rituale & Zeichen
-// Wird jedes Mal ausgeführt, wenn ein Charakterbogen gerendert wird.
-// =============================================================================
 Hooks.on("renderActorSheet5eCharacter", function (sheet, html, _data) {
 
-  // ---------------------------------------------------------------------------
-  // 1. Tab-Bezeichnung 'Spellbook' → 'Rituale & Zeichen' umbenennen
-  //    Selektoren decken dnd5e 3.x (data-tab) und ältere Versionen (i18n-Span) ab.
-  // ---------------------------------------------------------------------------
+  // Tab "Spellbook" → "Rituale & Zeichen"
   html.find(".tabs .item[data-tab='spellbook']").each(function () {
-    // Das sichtbare Text-Label aktualisieren, Icon/Tooltip unangetastet lassen
     const $tab = $(this);
     $tab.find(".tab-label, span:not(.fas):not(.far)").first().text("Rituale & Zeichen");
-    // Fallback: wenn kein Kindelement das Label hält, direkt den eigenen Textknoten ersetzen
     if ($tab.find(".tab-label, span:not(.fas):not(.far)").length === 0) {
       $tab.contents().filter(function () {
         return this.nodeType === Node.TEXT_NODE && this.textContent.trim() !== "";
@@ -375,31 +294,17 @@ Hooks.on("renderActorSheet5eCharacter", function (sheet, html, _data) {
     }
   });
 
-  // ---------------------------------------------------------------------------
-  // 2. Alle Zauberslots und Spell-Level-Header (Level 1–9) ausblenden.
-  //    Ausschließlich Cantrips (Level 0) bleiben sichtbar.
-  //
-  //    dnd5e 3.x verwendet data-level auf .items-section und .spellbook-header.
-  //    Zusätzlich wird die Slot-Leiste (.spell-slots) komplett versteckt.
-  // ---------------------------------------------------------------------------
-
-  // Spell-Level-Sektionen 1–9 ausblenden (data-level="1" … data-level="9")
+  // Zauberslots Level 1–9 ausblenden, Cantrips bleiben sichtbar
   for (let level = 1; level <= 9; level++) {
     html.find(`[data-level="${level}"]`).hide();
-    // Ältere dnd5e-Versionen nutzen .spell-level-N Klassen
     html.find(`.spell-level-${level}`).hide();
   }
 
-  // Alle Slot-Ressourcen-Bereiche ausblenden (Pip-Leisten, Slot-Counter)
   html.find(".spell-slots, .spell-slot-uses, .spell-pips").hide();
-
-  // Spellbook-Header die explizit ein Level > 0 referenzieren ausblenden
-  // (Header-Zeilen tragen oft data-level oder eine aria-/class-Referenz)
   html.find(".spellbook-header:not([data-level='0'])").hide();
   html.find(".items-header[data-level]:not([data-level='0'])").hide();
 
-  // Sicherheitsnetz: jede Sektion ausblenden, die kein Cantrip-Inhalt ist
-  // und deren Überschrift eine Zahl ≥ 1 enthält (localized labels wie "1. Grad")
+  // Fallback: Sektionen mit Grad-Zahl im Label
   html.find(".spellbook-list .spell-level-label, .spell-header .spell-level-label")
     .filter(function () {
       return /[1-9]/.test($(this).text());
@@ -407,9 +312,7 @@ Hooks.on("renderActorSheet5eCharacter", function (sheet, html, _data) {
     .closest(".items-section, .spellbook-section, .spell-level-section")
     .hide();
 
-  // ---------------------------------------------------------------------------
-  // 3. Währungs-UI: native Sektion ersetzen durch Geldbörse / Bank
-  // ---------------------------------------------------------------------------
+  // Geldbörse / Bank
   const MODULE_ID  = "ketsushin-salt-silver";
   const CURRENCIES = ["eur", "usd", "jpy", "cny", "rub"];
   const CUR_LABELS = { eur: "€ EUR", usd: "$ USD", jpy: "¥ JPY", cny: "¥ CNY", rub: "₽ RUB" };
@@ -417,19 +320,15 @@ Hooks.on("renderActorSheet5eCharacter", function (sheet, html, _data) {
 
   const actor = sheet.actor;
 
-  // Flag-Struktur beim ersten Öffnen anlegen (non-blocking)
   (async () => {
     if (!actor.getFlag(MODULE_ID, "wallet")) await actor.setFlag(MODULE_ID, "wallet", EMPTY_PURSE());
     if (!actor.getFlag(MODULE_ID, "bank"))   await actor.setFlag(MODULE_ID, "bank",   EMPTY_PURSE());
   })();
 
-  // Native Währungssektion ausblenden
   html.find(".currency, .currencies, .currency-list, [class*='currency']").hide();
 
-  // Aktuellen Anzeigemodus ermitteln (Standard: wallet)
   let mode = "wallet";
 
-  /** Baut die fünf Eingabefelder für den angegebenen Modus. */
   function buildInputs(currentMode) {
     const data = actor.getFlag(MODULE_ID, currentMode) ?? EMPTY_PURSE();
     return CURRENCIES.map(cur => `
@@ -452,7 +351,6 @@ Hooks.on("renderActorSheet5eCharacter", function (sheet, html, _data) {
       <div class="ks-currency-inputs">${buildInputs(mode)}</div>
     </div>`);
 
-  // Widget einsetzen: nach nativer Währungssektion oder ans Sheet-Ende
   const $anchor = html.find(".currency, .currencies, .currency-list").first();
   if ($anchor.length) {
     $anchor.after($widget);
@@ -460,7 +358,6 @@ Hooks.on("renderActorSheet5eCharacter", function (sheet, html, _data) {
     html.find(".sheet-body, form").first().append($widget);
   }
 
-  /** Bindet Change-Events der aktuell sichtbaren Inputs. */
   function bindInputs() {
     $widget.find(".ks-currency-input").on("change", async function () {
       const cur = $(this).data("currency");
