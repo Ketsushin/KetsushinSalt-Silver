@@ -397,7 +397,51 @@ Hooks.once("init", function () {
     rub: { label: "Russischer Rubel",  abbreviation: "₽",  conversion: 0.011 }
   };
 
-  console.log("Ketsushin: Salt & Silver | CONFIG.DND5E erfolgreich überschrieben.");
+  // ==========================================================================
+  // CONFIG.DND5E.traits[trait].choices setzen
+  // Wenn dieses Feld gesetzt ist, ignoriert dnd5e 3.x/4.x den Compendium-Lookup
+  // (Trait.getBaseItems) vollständig und nutzt stattdessen direkt unsere Daten.
+  // Muss am Ende des init-Hooks stehen, damit simpleWeapons/martialWeapons
+  // bereits gesetzt sind.
+  // ==========================================================================
+
+  // Werkzeuge
+  if (CONFIG.DND5E.traits?.tool) {
+    const toolChoices = {};
+    for (const [catKey, cat] of Object.entries(KS_TOOLS))
+      toolChoices[catKey] = {
+        label:    cat.label,
+        children: Object.fromEntries(Object.entries(cat.items).map(([k, v]) => [k, { label: v }]))
+      };
+    CONFIG.DND5E.traits.tool.choices = toolChoices;
+  }
+
+  // Waffen
+  if (CONFIG.DND5E.traits?.weapon) {
+    CONFIG.DND5E.traits.weapon.choices = {
+      sim: {
+        label:    "Leichte Waffen",
+        children: Object.fromEntries(
+          Object.entries(CONFIG.DND5E.simpleWeapons).map(([k, v]) => [k, { label: v.label }])
+        )
+      },
+      mar: {
+        label:    "Schwere Waffen",
+        children: Object.fromEntries(
+          Object.entries(CONFIG.DND5E.martialWeapons).map(([k, v]) => [k, { label: v.label }])
+        )
+      }
+    };
+  }
+
+  // Rüstungen
+  if (CONFIG.DND5E.traits?.armor) {
+    CONFIG.DND5E.traits.armor.choices = Object.fromEntries(
+      Object.entries(CONFIG.DND5E.armorTypes).map(([k, v]) => [k, { label: typeof v === "string" ? v : (v.label ?? k) }])
+    );
+  }
+
+  console.log("Ketsushin: Salt & Silver | CONFIG.DND5E + traits.choices erfolgreich überschrieben.");
 });
 
 Hooks.on("renderActorSheet5eCharacter", function (sheet, html, _data) {
