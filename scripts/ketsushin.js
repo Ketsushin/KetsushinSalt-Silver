@@ -428,50 +428,74 @@ Hooks.once("init", function () {
   };
 
   // ==========================================================================
-  // CONFIG.DND5E.traits[trait].choices setzen
-  // Wenn dieses Feld gesetzt ist, ignoriert dnd5e 3.x/4.x den Compendium-Lookup
-  // (Trait.getBaseItems) vollständig und nutzt stattdessen direkt unsere Daten.
-  // Muss am Ende des init-Hooks stehen, damit simpleWeapons/martialWeapons
-  // bereits gesetzt sind.
+  // Trait-Auswahlmenü (TraitAdvancement-Dialog im Spezies-Item) reparieren.
+  //
+  // dnd5e 4.x baut Choices via Trait.categories(type):
+  //   1) Liest CONFIG.DND5E[traitConfig.configKey]    → Top-Level-Kategorien
+  //   2) Für jede Kategorie: traitConfig.children[k]  → direkte CONFIG-Kinder (kein Kompendium!)
+  //   3) traitConfig.subtypes.ids                     → Kompendium-Lookup (→ englische Namen ✗)
+  //
+  // Lösung: subtypes entfernen (kein Kompendium) + children auf eigene CONFIG-Objekte zeigen.
+  // Das ist exakt das gleiche Schema wie Sprachen und Fertigkeiten.
   // ==========================================================================
 
-  // Werkzeuge
-  if (CONFIG.DND5E.traits?.tool) {
-    const toolChoices = {};
-    for (const [catKey, cat] of Object.entries(KS_TOOLS))
-      toolChoices[catKey] = {
-        label:    cat.label,
-        children: Object.fromEntries(Object.entries(cat.items).map(([k, v]) => [k, { label: v }]))
-      };
-    CONFIG.DND5E.traits.tool.choices = toolChoices;
-  }
+  // WERKZEUGE ----------------------------------------------------------------
+  // Raumfahrzeug entfernen (vor dem children-Setup)
+  if (CONFIG.DND5E.vehicleTypes) delete CONFIG.DND5E.vehicleTypes.space;
 
-  // Waffen
-  if (CONFIG.DND5E.traits?.weapon) {
-    CONFIG.DND5E.traits.weapon.choices = {
-      sim: {
-        label:    "Leichte Waffen",
-        children: Object.fromEntries(
-          Object.entries(CONFIG.DND5E.simpleWeapons).map(([k, v]) => [k, { label: v.label }])
-        )
-      },
-      mar: {
-        label:    "Schwere Waffen",
-        children: Object.fromEntries(
-          Object.entries(CONFIG.DND5E.martialWeapons).map(([k, v]) => [k, { label: v.label }])
-        )
-      }
+  // Eigene flache CONFIG-Objekte: key → deutsches Label (strings, kein Objekt)
+  CONFIG.DND5E.ksToolsArt   = Object.fromEntries(Object.entries(KS_TOOLS.art.items));
+  CONFIG.DND5E.ksToolsMusic = Object.fromEntries(Object.entries(KS_TOOLS.music.items));
+  CONFIG.DND5E.ksToolsGame  = Object.fromEntries(Object.entries(KS_TOOLS.game.items));
+
+  if (CONFIG.DND5E.traits?.tool) {
+    // Kompendium-Lookup deaktivieren
+    delete CONFIG.DND5E.traits.tool.subtypes;
+    // Kinder aus unseren CONFIG-Objekten statt Kompendium
+    CONFIG.DND5E.traits.tool.children = {
+      art:     "ksToolsArt",
+      music:   "ksToolsMusic",
+      game:    "ksToolsGame",
+      vehicle: "vehicleTypes"
+    };
+    // Kategorie-Labels auf Deutsch (überschreibt dnd5e i18n-Strings)
+    CONFIG.DND5E.toolProficiencies = {
+      art:     KS_TOOLS.art.label,
+      music:   KS_TOOLS.music.label,
+      game:    KS_TOOLS.game.label,
+      vehicle: KS_TOOLS.vehicle.label
     };
   }
 
-  // Rüstungen
-  if (CONFIG.DND5E.traits?.armor) {
-    CONFIG.DND5E.traits.armor.choices = Object.fromEntries(
-      Object.entries(CONFIG.DND5E.armorTypes).map(([k, v]) => [k, { label: typeof v === "string" ? v : (v.label ?? k) }])
-    );
+  // WAFFEN -------------------------------------------------------------------
+  CONFIG.DND5E.ksWeaponsSim = Object.fromEntries(
+    Object.entries(CONFIG.DND5E.simpleWeapons  ?? {}).map(([k, v]) => [k, typeof v === "string" ? v : v.label])
+  );
+  CONFIG.DND5E.ksWeaponsMar = Object.fromEntries(
+    Object.entries(CONFIG.DND5E.martialWeapons ?? {}).map(([k, v]) => [k, typeof v === "string" ? v : v.label])
+  );
+
+  if (CONFIG.DND5E.traits?.weapon) {
+    delete CONFIG.DND5E.traits.weapon.subtypes;
+    CONFIG.DND5E.traits.weapon.children = {
+      sim: "ksWeaponsSim",
+      mar: "ksWeaponsMar"
+    };
+    // weaponProficiencies ist bereits oben auf Deutsch gesetzt
   }
 
-  console.log("Ketsushin: Salt & Silver | CONFIG.DND5E + traits.choices erfolgreich überschrieben.");
+  // RÜSTUNGEN ----------------------------------------------------------------
+  // Nur die 3 Proficiency-Kategorien, keine einzelnen Rüstungsstücke aus Kompendium
+  if (CONFIG.DND5E.traits?.armor) {
+    delete CONFIG.DND5E.traits.armor.subtypes;
+    CONFIG.DND5E.armorProficiencies = {
+      lgt: "Leichte Rüstung",
+      hvy: "Mittlere/Schwere Rüstung",
+      shl: "Schilde"
+    };
+  }
+
+  console.log("Ketsushin: Salt & Silver | CONFIG.DND5E + Trait-Choices erfolgreich überschrieben.");
 });
 
 Hooks.on("renderActorSheet5eCharacter", function (sheet, html, _data) {
