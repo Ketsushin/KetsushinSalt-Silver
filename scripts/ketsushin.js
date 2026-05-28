@@ -304,18 +304,32 @@ Hooks.once("init", function () {
   };
 
   // Rüstungen
+  // "default" bleibt erhalten (Fallback in dnd5e-Fehlerbehandlung + Charaktere mit ac.calc="default")
   CONFIG.DND5E.armorClasses = {
-    clothing: { label: "Normale Kleidung", formula: "10 + @abilities.dex.mod" },
-    light:    { label: "Leichte Rüstung",  formula: "11 + @abilities.dex.mod" },
-    heavy:    { label: "Schwere Rüstung",  formula: "16" },
-    shield:   { label: "Schild",           formula: "@attributes.ac.base + 2" }
+    default:  { label: "Ausgerüstete Rüstung", formula: "@attributes.ac.armor + @attributes.ac.dex" },
+    clothing: { label: "Normale Kleidung",     formula: "10 + @abilities.dex.mod" },
+    light:    { label: "Leichte Rüstung",      formula: "11 + @abilities.dex.mod" },
+    heavy:    { label: "Schwere Rüstung",      formula: "16" },
+    shield:   { label: "Schild",              formula: "@attributes.ac.base + 2" }
   };
 
-  // lgt/hvy/shl = dnd5e's tatsächliche Proficiency-Keys für Rüstungen
+  // Standard-Keys beibehalten: dnd5e prüft item.type.value === "shield" und
+  // item.type.value in CONFIG.DND5E.armorTypes hard-kodiert.
   CONFIG.DND5E.armorTypes = {
-    lgt: "Leichte Rüstung",
-    hvy: "Mittlere/Schwere Rüstung",
-    shl: "Schilde"
+    light:  "Leichte Rüstung",
+    medium: "Mittlere Rüstung",
+    heavy:  "Schwere Rüstung",
+    shield: "Schild"
+  };
+
+  // medium und heavy → beide auf hvy-Proficiency (KS fasst sie zusammen)
+  CONFIG.DND5E.armorProficienciesMap = {
+    natural:  true,
+    clothing: true,
+    light:    "lgt",
+    medium:   "hvy",
+    heavy:    "hvy",
+    shield:   "shl"
   };
 
   // Waffen
@@ -485,14 +499,16 @@ Hooks.once("init", function () {
   }
 
   // RÜSTUNGEN ----------------------------------------------------------------
-  // Nur die 3 Proficiency-Kategorien, keine einzelnen Rüstungsstücke aus Kompendium
+  // children-Mechanismus wie bei Waffen/Werkzeugen (kein Kompendium-Lookup)
+  CONFIG.DND5E.ksArmorItems = {
+    lgt: "Leichte Rüstung",
+    hvy: "Mittlere/Schwere Rüstung",
+    shl: "Schilde"
+  };
   if (CONFIG.DND5E.traits?.armor) {
     delete CONFIG.DND5E.traits.armor.subtypes;
-    CONFIG.DND5E.armorProficiencies = {
-      lgt: "Leichte Rüstung",
-      hvy: "Mittlere/Schwere Rüstung",
-      shl: "Schilde"
-    };
+    CONFIG.DND5E.traits.armor.children = { ruestung: "ksArmorItems" };
+    CONFIG.DND5E.armorProficiencies = { ruestung: "Rüstungsübungen" };
   }
 
   console.log("Ketsushin: Salt & Silver | CONFIG.DND5E + Trait-Choices erfolgreich überschrieben.");
@@ -632,8 +648,9 @@ Hooks.once("ready", function () {
   for (const [k, v] of Object.entries(CONFIG.DND5E.simpleWeapons  ?? {})) KS_WEAPON_FLAT[k] = v.label;
   for (const [k, v] of Object.entries(CONFIG.DND5E.martialWeapons ?? {})) KS_WEAPON_FLAT[k] = v.label;
 
+  // KS_ARMOR_FLAT braucht Proficiency-Keys (lgt/hvy/shl), nicht Item-Typ-Keys
   const KS_ARMOR_FLAT = {};
-  for (const [k, v] of Object.entries(CONFIG.DND5E.armorTypes ?? {}))
+  for (const [k, v] of Object.entries(CONFIG.DND5E.ksArmorItems ?? {}))
     KS_ARMOR_FLAT[k] = typeof v === "string" ? v : (v.label ?? k);
 
   // ── Strategie A: fromUuid / fromUuidSync ────────────────────────────────
@@ -1122,6 +1139,10 @@ Hooks.once("ready", function () {
     }
 
     if (trait === "armor") {
+      // Guard: TraitAdvancement-Config-Dialoge nutzen "configuration.checked.*"-Namen,
+      // keine ".armorProf.value."-Checkboxen → nicht anfassen, sonst wird alles versteckt.
+      if (!$h.find("dnd5e-checkbox[name*='.armorProf.value.']").length) return;
+
       // KS_ARMOR_FLAT hat jetzt lgt/hvy/shl als Keys (dnd5e-native).
       // Strategie: Kategorie-<li> (lgt/hvy/shl) umbenennen, Einzelitems + med ausblenden,
       // dann alle 3 Kategorie-Items in EINEN Fieldset "Rüstungen" zusammenführen.
