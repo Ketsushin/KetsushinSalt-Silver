@@ -14,7 +14,7 @@ const KS_TOOLS = {
       mason:        "Steinmetz",
       jeweler:      "Juwelier",
       glassblower:  "Glasbläser",
-      leatherwork:  "Lederbearbeitung",
+      leatherworker: "Lederbearbeitung",
       cobbler:      "Schuster",
       painter:      "Maler",
       potter:       "Töpfer",
@@ -29,7 +29,7 @@ const KS_TOOLS = {
   music: {
     label: "Instrumente",
     items: {
-      bagpipe:   "Dudelsack",
+      bagpipes:   "Dudelsack",
       drum:      "Trommel",
       dulcimer:  "Hackbrett",
       flute:     "Flöte",
@@ -53,7 +53,7 @@ const KS_TOOLS = {
       threedragons:       "Three-Dragon Ante",
       poker:              "Poker",
       blackjack:          "Blackjack",
-      schach:             "Schach",
+      chess:              "Schach",
       dame:               "Dame",
       mahjong:            "Mahjong",
       go:                 "Go",
@@ -68,8 +68,7 @@ const KS_TOOLS = {
     items: {
       air:   "Luftfahrzeug",
       land:  "Landfahrzeug",
-      water: "Wasserfahrzeug",
-      space: "Raumfahrzeug"
+      water: "Wasserfahrzeug"
     }
   }
 };
@@ -357,7 +356,34 @@ Hooks.once("init", function () {
     flammenwerfer: { label: "Flammenwerfer",      type: "martialR" }
   };
 
-  // Schadensarten
+  // Custom Tools in CONFIG.DND5E.tools registrieren—Items die nicht nativ in dnd5e sind,
+  // damit der Actor-Save funktioniert und ToolsConfig sie in der richtigen Kategorie anzeigt.
+  const KS_CUSTOM_TOOLS = {
+    // Musikinstrumente (nicht in dnd5e 4.x)
+    klavier:            { label: "Klavier",            ability: "cha", type: "music" },
+    saxophon:           { label: "Saxophon",           ability: "cha", type: "music" },
+    trompete:           { label: "Trompete",           ability: "cha", type: "music" },
+    triangel:           { label: "Triangel",           ability: "cha", type: "music" },
+    geige:              { label: "Geige",              ability: "cha", type: "music" },
+    // Handwerkszeug
+    mechanic:           { label: "Mechaniker",         ability: "int", type: "art"   },
+    locksmith:          { label: "Schlosser",          ability: "dex", type: "art"   },
+    // Spielsets
+    threedragons:       { label: "Three-Dragon Ante",  ability: "int", type: "game"  },
+    poker:              { label: "Poker",              ability: "int", type: "game"  },
+    blackjack:          { label: "Blackjack",          ability: "int", type: "game"  },
+    dame:               { label: "Dame",               ability: "int", type: "game"  },
+    mahjong:            { label: "Mahjong",            ability: "int", type: "game"  },
+    go:                 { label: "Go",                 ability: "int", type: "game"  },
+    russischesRoulette: { label: "Russisches Roulette", ability: "int", type: "game" },
+    shogi:              { label: "Shogi",              ability: "int", type: "game"  },
+    uno:                { label: "Uno",                ability: "int", type: "game"  },
+    monopoly:           { label: "Monopoly",           ability: "int", type: "game"  },
+  };
+  for (const [key, data] of Object.entries(KS_CUSTOM_TOOLS)) {
+    // id wird von dnd5e's getBaseItemUUID() benötigt (Charakterbogen-Rendering)
+    if (!CONFIG.DND5E.tools[key]) CONFIG.DND5E.tools[key] = { id: key, ...data };
+  }
   CONFIG.DND5E.damageTypes = {
     slashing:   { label: "Hieb",              icon: "icons/svg/sword.svg" },
     piercing:   { label: "Stich",             icon: "icons/svg/dagger.svg" },
@@ -918,6 +944,8 @@ Hooks.once("ready", function () {
       const $tmplPc    = $tmpl.find("[name*='.tools.']").first();
       const pcTag      = $tmplPc.length ? $tmplPc[0].tagName.toLowerCase() : "proficiency-cycle";
       const tmplPcName = $tmplPc.attr("name") ?? `system.tools.${tmplKey}.value`;
+      console.log(`KS | ToolInject [${catKey}]: tmpl=[${tmplKey}] pcTag=${pcTag} tmplName=${tmplPcName}`);
+      if ($tmplPc[0]) console.log(`KS | ToolInject tmpl HTML:`, $tmpl[0].outerHTML?.slice(0, 400));
 
       for (const [itemKey, itemLabel] of Object.entries(cat.items)) {
         // Bereits im DOM?
@@ -940,8 +968,8 @@ Hooks.once("ready", function () {
         // Frisches Proficiency-Element (KEIN clone)
         const pc = document.createElement(pcTag);
         pc.setAttribute("name", newPcName);
-        if (toolVal) pc.setAttribute("value", String(toolVal));
-        // Weitere Attribute vom Template übernehmen (z.B. max, data-*)
+        // Weitere Attribute vom Template übernehmen (z.B. type="skill", data-*)
+        // MUSS vor dem DOM-Append gesetzt werden (type beeinflusst validValues)
         if ($tmplPc[0]) {
           for (const attr of $tmplPc[0].attributes) {
             if (attr.name !== "name" && attr.name !== "value") {
@@ -949,10 +977,15 @@ Hooks.once("ready", function () {
             }
           }
         }
+        // _value direkt setzen BEVOR das Element ins DOM kommt.
+        // connectedCallback → _refresh() liest this._value → setFormValue(toolVal).
+        // pc.value = x würde change-Events feuern und AppV2 vorzeitig triggern.
+        if (toolVal) pc._value = toolVal;
 
-        li.appendChild(lbl);
         li.appendChild(pc);
+        li.appendChild(lbl);
         $container[0].appendChild(li);
+        console.log(`KS | ToolInject [${itemKey}]: name=${newPcName} val=${toolVal} pcCtor=${pc.constructor?.name}`);
       }
     }
   }
@@ -1114,5 +1147,35 @@ Hooks.once("ready", function () {
     `Trait.choices: ${Trait?.choices ? "gepatcht ✓" : "nicht gefunden"} | ` +
     `buildTraitChoices: registriert ✓ | DOM-Hooks: ${RENDER_HOOKS.length} registriert ✓`
   );
+  console.log(`KS | dnd5e tool-keys:`, Object.keys(CONFIG.DND5E.tools ?? {}).join(", "));
+
+  // ── Strategie G: ItemSheet5e._getItemBaseTypes ──────────────────────────
+  // Das "Basiswaffe"-Dropdown im Waffen-Item-Sheet lädt Compendium-Items und
+  // zeigt ihre englischen Namen. Wir überschreiben die Methode damit unsere
+  // deutschen Weapon-Labels stattdessen erscheinen.
+  const ItemSheet5e = globalThis.dnd5e?.applications?.item?.ItemSheet5e;
+  if (ItemSheet5e?.prototype?._getItemBaseTypes) {
+    const _origGetItemBaseTypes = ItemSheet5e.prototype._getItemBaseTypes;
+    ItemSheet5e.prototype._getItemBaseTypes = async function (context) {
+      if (this.item.type !== "weapon") return _origGetItemBaseTypes.call(this, context);
+
+      const baseType = context?.source?.type?.value ?? this.item.system?.type?.value ?? "";
+      const allWeapons = {
+        ...CONFIG.DND5E.simpleWeapons  ?? {},
+        ...CONFIG.DND5E.martialWeapons ?? {}
+      };
+      const filtered = {};
+      for (const [key, cfg] of Object.entries(allWeapons)) {
+        if (cfg.type === baseType) filtered[key] = cfg.label;
+      }
+      if (foundry.utils.isEmpty(filtered)) return null;
+      return Object.fromEntries(
+        Object.entries(filtered).sort((a, b) => a[1].localeCompare(b[1], "de"))
+      );
+    };
+    console.log("KS | ItemSheet5e._getItemBaseTypes gepatcht ✓");
+  } else {
+    console.warn("KS | ItemSheet5e nicht gefunden – Basiswaffe-Dropdown ungepacht");
+  }
 });
 
