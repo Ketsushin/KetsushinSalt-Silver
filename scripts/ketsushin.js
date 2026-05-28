@@ -308,10 +308,11 @@ Hooks.once("init", function () {
     shield:   { label: "Schild",           formula: "@attributes.ac.base + 2" }
   };
 
+  // lgt/hvy/shl = dnd5e's tatsächliche Proficiency-Keys für Rüstungen
   CONFIG.DND5E.armorTypes = {
-    light:  "Leichte Rüstung",
-    heavy:  "Mittlere/Schwere Rüstung",
-    shield: "Schild"
+    lgt: "Leichte Rüstung",
+    hvy: "Mittlere/Schwere Rüstung",
+    shl: "Schilde"
   };
 
   // Waffen
@@ -752,6 +753,96 @@ Hooks.once("ready", function () {
 
   // ── Strategie F: DOM-Injection – fügt fehlende Items in die Liste ein ──
   // Greift wenn die data-Ebene nicht überschrieben werden konnte.
+  function _injectMissingArmorItems($h) {
+    // Shield-Element finden — entweder via data-key oder dnd5e-checkbox
+    let $shieldLi = $h.find("[data-key='shield'], [data-key='armor:shield']").filter("li").first();
+    let $container = $shieldLi.length ? $shieldLi.parent() : null;
+    let usesCb = false; // true = dnd5e-checkbox-Ansatz, false = native input
+    let baseName = "";
+    let shieldDataKey = "";
+
+    if ($shieldLi.length) {
+      shieldDataKey = $shieldLi.attr("data-key") ?? "";
+      // native <input>: Name rauslesen um Basisname zu ermitteln
+      const shieldInput = $shieldLi.find("input").first();
+      const shieldCb = $shieldLi.find("dnd5e-checkbox").first();
+      if (shieldCb.length) {
+        usesCb = true;
+        const n = shieldCb.attr("name") ?? "";
+        baseName = n.slice(0, n.lastIndexOf("."));
+      } else if (shieldInput.length) {
+        const n = shieldInput.attr("name") ?? "";
+        // Format A: "...armorProf.value.shield" → baseName = "...armorProf.value"
+        if (n.endsWith(".shield")) {
+          baseName = n.slice(0, n.lastIndexOf("."));
+        } else {
+          // Format B: "...armorProf.value" (value-Attribut = "shield")
+          baseName = n;
+        }
+      }
+    } else {
+      // Fallback: dnd5e-checkbox-Ansatz
+      const $cb = $h.find("dnd5e-checkbox[name$='.armorProf.value.shield']").first();
+      if ($cb.length) {
+        usesCb = true;
+        $shieldLi = $cb.closest("li");
+        $container = $cb.closest("ol.trait-list");
+        const n = $cb.attr("name") ?? "";
+        baseName = n.slice(0, n.lastIndexOf("."));
+      }
+    }
+    if (!$shieldLi.length || !$container?.length || !baseName) return;
+
+    // "light" und "heavy" als NEUE (frische) Elemente einfügen
+    for (const [key, label] of [["heavy", "Mittlere/Schwere Rüstung"], ["light", "Leichte Rüstung"]]) {
+      if ($container.find(`[data-key="${key}"], [data-key="armor:${key}"]`).length) continue;
+      if ($container.find(`dnd5e-checkbox[name$=".armorProf.value.${key}"]`).length) continue;
+
+      const li = document.createElement("li");
+      if (shieldDataKey) li.setAttribute("data-key", shieldDataKey.replace("shield", key));
+
+      if (usesCb) {
+        // dnd5e-checkbox (wie WeaponsConfig)
+        const lbl = document.createElement("label");
+        lbl.className = "name";
+        lbl.textContent = label;
+        const cb = document.createElement("dnd5e-checkbox");
+        cb.setAttribute("name", `${baseName}.${key}`);
+        li.appendChild(lbl);
+        li.appendChild(cb);
+      } else {
+        // native <input type="checkbox">
+        const lbl = document.createElement("label");
+        lbl.className = "name";
+        lbl.textContent = label;
+        const inp = document.createElement("input");
+        inp.type = "checkbox";
+        // Format A: flat key im Name
+        if (!baseName.endsWith(".value") || baseName.endsWith(".value")) {
+          // Sicherheitshalber beide Formate unterstützen:
+          const shieldInputEl = $shieldLi.find("input").first()[0];
+          if (shieldInputEl && (shieldInputEl.getAttribute("name") ?? "").endsWith(".shield")) {
+            inp.setAttribute("name", `${baseName}.${key}`);
+          } else {
+            inp.setAttribute("name", baseName);
+            inp.setAttribute("value", key);
+          }
+        }
+        inp.checked = false;
+        li.appendChild(lbl);
+        li.appendChild(inp);
+      }
+
+      $container[0].insertBefore(li, $container[0].firstChild);
+    }
+
+    // Überschrift des Shield-Containers auf "Rüstungen" setzen
+    $container[0].closest("fieldset, section")?.querySelector("legend, .category-label, .section-header")
+      ?.replaceWith(Object.assign(document.createElement(
+        $container[0].closest("fieldset") ? "legend" : "div"
+      ), { textContent: "Rüstungen", className: "category-label" }));
+  }
+
   function _injectMissingWeaponItems($h) {
     // WeaponsConfig (dnd5e 4.x): Kategorien via dnd5e-checkbox name="...weaponProf.value.sim/mar"
     const cats = {
@@ -759,39 +850,36 @@ Hooks.once("ready", function () {
       mar: { items: CONFIG.DND5E.martialWeapons ?? {} }
     };
     for (const [catKey, cat] of Object.entries(cats)) {
-      // <ol class="trait-list"> der Kategorie finden (über das "Alle"-Checkbox-Element)
       const $allCb = $h.find(`dnd5e-checkbox[name$=".weaponProf.value.${catKey}"]`).first();
       const $ol = $allCb.closest("ol.trait-list");
       if (!$ol.length) continue;
 
-      // Template-<li>: irgendeins aus der Liste (auch versteckte)
-      const $tmpl = $ol.find("li").filter(function () {
-        const n = $(this).find("dnd5e-checkbox[name*='.weaponProf.value.']")
-                          .not("[name*='.mastery.']").first().attr("name") ?? "";
-        const k = n.split(".").pop();
-        return k && k !== catKey;
-      }).first();
-      if (!$tmpl.length) continue;
-
-      const tmplKey = ($tmpl.find("dnd5e-checkbox[name*='.weaponProf.value.']")
-                             .not("[name*='.mastery.']").first().attr("name") ?? "").split(".").pop();
+      // Basisname aus dem "Alle"-Checkbox-Name ableiten:
+      // z.B. "system.traits.weaponProf.value.sim" → "system.traits.weaponProf.value"
+      const allName = $allCb.attr("name") ?? "";
+      const baseName = allName.slice(0, allName.lastIndexOf("."));
+      if (!baseName) continue;
 
       for (const [itemKey, itemData] of Object.entries(cat.items)) {
         const itemLabel = typeof itemData === "string" ? itemData : itemData.label;
-        // Bereits im DOM?
         if ($ol.find(`dnd5e-checkbox[name$=".weaponProf.value.${itemKey}"]`).length) continue;
 
-        const $new = $tmpl.clone(false);
-        $new.find("label.name").first().text(itemLabel);
-        // Alle dnd5e-checkbox names aktualisieren (value + mastery)
-        $new.find("dnd5e-checkbox").each(function () {
-          const $cb = $(this);
-          const newName = ($cb.attr("name") ?? "")
-            .replace(new RegExp(`\\.${tmplKey}(\\.|$)`, "g"), `.${itemKey}$1`);
-          $cb.attr("name", newName);
-        });
-        $new.show();
-        $ol.append($new);
+        // KEIN clone() — frisches Element erstellen damit ElementInternals
+        // (Form-Association) korrekt initialisiert wird.
+        // Struktur muss zur dnd5e-CSS passen:
+        //   <li><label class="name">...</label><div class="proficiency"><dnd5e-checkbox/></div></li>
+        const li = document.createElement("li");
+        const lbl = document.createElement("label");
+        lbl.className = "name";
+        lbl.textContent = itemLabel;
+        const profDiv = document.createElement("div");
+        profDiv.className = "proficiency";
+        const cb = document.createElement("dnd5e-checkbox");
+        cb.setAttribute("name", `${baseName}.${itemKey}`);
+        profDiv.appendChild(cb);
+        li.appendChild(lbl);
+        li.appendChild(profDiv);
+        $ol[0].appendChild(li);
       }
     }
   }
@@ -922,35 +1010,31 @@ Hooks.once("ready", function () {
     }
 
     if (trait === "armor") {
-      // ArmorConfig: erst dnd5e-checkbox-Ansatz versuchen (wie WeaponsConfig)
-      const $armorCbs = $h.find("dnd5e-checkbox[name*='.armorProf.value.']").not("[name*='.mastery.']");
-      if ($armorCbs.length) {
-        $h.find("ol.trait-list li").each(function () {
-          const $li = $(this);
-          const $cb = $li.find("dnd5e-checkbox[name*='.armorProf.value.']").not("[name*='.mastery.']").first();
-          if (!$cb.length) return;
-          const key = ($cb.attr("name") ?? "").split(".").pop();
-          if (!key) return;
-          if (KS_ARMOR_FLAT[key]) {
-            $li.show();
-            $li.find("label.name").first().text(KS_ARMOR_FLAT[key]);
-          } else {
-            $li.hide(); // clothing, medium, etc.
-          }
-        });
-      } else {
-        // Fallback: data-key (wie ToolsConfig)
-        $h.find("li[data-key], [data-key]").each(function () {
-          const $li = $(this);
-          const key = _norm($li.data("key") ?? "");
-          if (!key) return;
-          if (KS_ARMOR_FLAT[key]) {
-            $li.show();
-            $li.find("label").not(":has(input)").first().text(KS_ARMOR_FLAT[key]);
-          } else {
-            $li.hide();
-          }
-        });
+      // KS_ARMOR_FLAT hat jetzt lgt/hvy/shl als Keys (dnd5e-native).
+      // Strategie: Kategorie-<li> (lgt/hvy/shl) umbenennen, Einzelitems + med ausblenden,
+      // dann alle 3 Kategorie-Items in EINEN Fieldset "Rüstungen" zusammenführen.
+      const $toMove = [];
+      $h.find("fieldset.traits.card ol.trait-list li").each(function () {
+        const $li = $(this);
+        const $cb = $li.find("dnd5e-checkbox[name*='.armorProf.value.']").first();
+        if (!$cb.length) { $li.hide(); return; }
+        const key = ($cb.attr("name") ?? "").split(".").pop();
+        if (KS_ARMOR_FLAT[key]) {
+          $li.find("label.name").first().text(KS_ARMOR_FLAT[key]);
+          $toMove.push($li[0]);
+        } else {
+          $li.hide();
+        }
+      });
+      if ($toMove.length) {
+        // Ersten Fieldset nehmen → Ziel-Container
+        const $first = $h.find("fieldset.traits.card").first();
+        const $ol    = $first.find("ol.trait-list").first();
+        $first.find("> legend, > .category-label").first().text("Rüstungen");
+        $ol.empty();
+        for (const li of $toMove) $ol.append(li);
+        // Alle anderen Fieldsets ausblenden
+        $h.find("fieldset.traits.card").not($first).hide();
       }
     }
   }
