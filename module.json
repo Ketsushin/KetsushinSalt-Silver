@@ -23,6 +23,20 @@
   "styles": [
     "styles/ketsushin.css"
   ],
+  "packs": [
+    {
+      "name": "charaktererstellung",
+      "label": "Ketsushin: Charaktererstellung",
+      "path": "packs/charaktererstellung",
+      "type": "Item"
+    },
+    {
+      "name": "items",
+      "label": "Ketsushin: Items",
+      "path": "packs/items",
+      "type": "Item"
+    }
+  ],
   "relationships": {
     "systems": [
       {
