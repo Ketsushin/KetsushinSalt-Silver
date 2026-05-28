@@ -321,39 +321,39 @@ Hooks.once("init", function () {
   };
 
   CONFIG.DND5E.weaponTypes = {
-    simpleM:   "Leichte Nahkampfwaffe",
-    simpleR:   "Leichte Fernkampfwaffe",
-    martialM:  "Schwere Nahkampfwaffe",
-    martialR:  "Schwere Fernkampfwaffe"
+    sim: "Leichte Waffe",
+    mar: "Schwere Waffe"
   };
+  // sim→sim / mar→mar damit dnd5e-Proficiency-Checks ohne Mapping funktionieren
+  CONFIG.DND5E.weaponProficienciesMap = { sim: "sim", mar: "mar" };
 
   CONFIG.DND5E.simpleWeapons = {
-    keule:          { label: "Keule",             type: "simpleM" },
-    dolch:          { label: "Dolch",             type: "simpleM" },
-    messer:         { label: "Messer",            type: "simpleM" },
-    handaxt:        { label: "Handaxt",           type: "simpleM" },
-    machete:        { label: "Machete",           type: "simpleM" },
-    stab:           { label: "Stab",              type: "simpleM" },
-    sichel:         { label: "Sichel",            type: "simpleM" },
-    leichtArmbrust: { label: "Leichte Armbrust",  type: "simpleR" },
-    leichtHammer:   { label: "Leichter Hammer",   type: "simpleR" },
-    kurzbogen:      { label: "Kurzbogen",         type: "simpleR" },
-    leichtPistole:  { label: "Leichte Pistole",   type: "simpleR" },
-    schleuder:      { label: "Schleuder",         type: "simpleR" }
+    keule:          { label: "Keule",             type: "sim" },
+    dolch:          { label: "Dolch",             type: "sim" },
+    messer:         { label: "Messer",            type: "sim" },
+    handaxt:        { label: "Handaxt",           type: "sim" },
+    machete:        { label: "Machete",           type: "sim" },
+    stab:           { label: "Stab",              type: "sim" },
+    sichel:         { label: "Sichel",            type: "sim" },
+    leichtArmbrust: { label: "Leichte Armbrust",  type: "sim" },
+    leichtHammer:   { label: "Leichter Hammer",   type: "sim" },
+    kurzbogen:      { label: "Kurzbogen",         type: "sim" },
+    leichtPistole:  { label: "Leichte Pistole",   type: "sim" },
+    schleuder:      { label: "Schleuder",         type: "sim" }
   };
 
   CONFIG.DND5E.martialWeapons = {
-    schwert:       { label: "Schwert",           type: "martialM" },
-    hammer:        { label: "Hämmer",            type: "martialM" },
-    peitsche:      { label: "Peitsche",          type: "martialM" },
-    rapier:        { label: "Rapier",            type: "martialM" },
-    saebel:        { label: "Säbel",             type: "martialM" },
-    flegel:        { label: "Flegel",            type: "martialM" },
-    schwerPistole: { label: "Schwere Pistole",   type: "martialR" },
-    gewehr:        { label: "Gewehre",           type: "martialR" },
-    schwerArmbrust:{ label: "Schwere Armbrust",  type: "martialR" },
-    langbogen:     { label: "Langbogen",         type: "martialR" },
-    flammenwerfer: { label: "Flammenwerfer",      type: "martialR" }
+    schwert:       { label: "Schwert",           type: "mar" },
+    hammer:        { label: "Hämmer",            type: "mar" },
+    peitsche:      { label: "Peitsche",          type: "mar" },
+    rapier:        { label: "Rapier",            type: "mar" },
+    saebel:        { label: "Säbel",             type: "mar" },
+    flegel:        { label: "Flegel",            type: "mar" },
+    schwerPistole: { label: "Schwere Pistole",   type: "mar" },
+    gewehr:        { label: "Gewehre",           type: "mar" },
+    schwerArmbrust:{ label: "Schwere Armbrust",  type: "mar" },
+    langbogen:     { label: "Langbogen",         type: "mar" },
+    flammenwerfer: { label: "Flammenwerfer",      type: "mar" }
   };
 
   // Custom Tools in CONFIG.DND5E.tools registrieren—Items die nicht nativ in dnd5e sind,
