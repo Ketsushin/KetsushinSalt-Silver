@@ -353,7 +353,8 @@ Hooks.once("init", function () {
     schwerPistole: { label: "Schwere Pistole",   type: "martialR" },
     gewehr:        { label: "Gewehre",           type: "martialR" },
     schwerArmbrust:{ label: "Schwere Armbrust",  type: "martialR" },
-    langbogen:     { label: "Langbogen",         type: "martialR" }
+    langbogen:     { label: "Langbogen",         type: "martialR" },
+    flammenwerfer: { label: "Flammenwerfer",      type: "martialR" }
   };
 
   // Schadensarten
@@ -843,7 +844,7 @@ Hooks.once("ready", function () {
       ), { textContent: "Rüstungen", className: "category-label" }));
   }
 
-  function _injectMissingWeaponItems($h) {
+  function _injectMissingWeaponItems($h, profSet) {
     // WeaponsConfig (dnd5e 4.x): Kategorien via dnd5e-checkbox name="...weaponProf.value.sim/mar"
     const cats = {
       sim: { items: CONFIG.DND5E.simpleWeapons  ?? {} },
@@ -876,6 +877,7 @@ Hooks.once("ready", function () {
         profDiv.className = "proficiency";
         const cb = document.createElement("dnd5e-checkbox");
         cb.setAttribute("name", `${baseName}.${itemKey}`);
+        if (profSet?.has?.(itemKey)) cb.setAttribute("checked", "");
         profDiv.appendChild(cb);
         li.appendChild(lbl);
         li.appendChild(profDiv);
@@ -884,7 +886,7 @@ Hooks.once("ready", function () {
     }
   }
 
-  function _injectMissingToolItems($h) {
+  function _injectMissingToolItems($h, toolsData) {
     for (const [catKey, cat] of Object.entries(KS_TOOLS)) {
       let $container = null;
       let $tmpl = null;
@@ -900,7 +902,6 @@ Hooks.once("ready", function () {
         const $all = $h.find(`[data-key="tool:${catKey}"], [data-key="${catKey}"]`);
         if ($all.length) {
           $container = $all.first().parent();
-          // Template aus anderem Container holen
           $tmpl = $h.find("li[data-key]")
             .filter(function () {
               const k = _norm($(this).data("key") ?? "");
@@ -910,35 +911,48 @@ Hooks.once("ready", function () {
       }
       if (!$container || !$tmpl) continue;
 
-      const tmplKey  = _norm($tmpl.data("key") ?? "");
-      const usesPfx  = String($tmpl.data("key") ?? "").includes(":");
+      const tmplKey = _norm($tmpl.data("key") ?? "");
+      const usesPfx = String($tmpl.data("key") ?? "").includes(":");
+
+      // Tag-Name und Namens-Muster des Proficiency-Elements aus Template ableiten
+      const $tmplPc    = $tmpl.find("[name*='.tools.']").first();
+      const pcTag      = $tmplPc.length ? $tmplPc[0].tagName.toLowerCase() : "proficiency-cycle";
+      const tmplPcName = $tmplPc.attr("name") ?? `system.tools.${tmplKey}.value`;
 
       for (const [itemKey, itemLabel] of Object.entries(cat.items)) {
         // Bereits im DOM?
         if ($container.find(`[data-key="tool:${itemKey}"], [data-key="${itemKey}"]`).length) continue;
 
-        const fullKey = usesPfx ? `tool:${itemKey}` : itemKey;
-        const $new = $tmpl.clone(false);
-        $new.attr("data-key", fullKey);
+        const fullKey   = usesPfx ? `tool:${itemKey}` : itemKey;
+        const newPcName = tmplPcName.replace(new RegExp(`\\.${tmplKey}\\b`, "g"), `.${itemKey}`);
+        const toolVal   = toolsData?.[itemKey]?.value ?? 0;
 
-        // Input-Namen anpassen (z.B. "system.tools.drum.value" → "system.tools.mechanic.value")
-        $new.find("input, select").each(function () {
-          const $i   = $(this);
-          const oldn = $i.attr("name") ?? "";
-          if (!oldn) return;
-          const newn = oldn
-            .replace(new RegExp(`\\.${tmplKey}\\.`, "g"), `.${itemKey}.`)
-            .replace(new RegExp(`(:)${tmplKey}(\\.|$)`, "g"), `$1${itemKey}$2`)
-            .replace(new RegExp(`\\.${tmplKey}$`, "g"), `.${itemKey}`);
-          $i.attr("name", newn).prop("checked", false).prop("selected", false);
-          if ($i.is("[type='radio']")) $i.val("0");
-        });
+        // Frisches <li> erstellen — kein clone() → kein ElementInternals-Problem
+        const li = document.createElement("li");
+        li.setAttribute("data-key", fullKey);
+        if ($tmpl[0].className) li.className = $tmpl[0].className;
 
-        // Label setzen
-        $new.find("label").not(":has(input)").first().text(itemLabel);
-        $new.find(".label, .name, .trait-label, [data-tooltip]").not(":has(input)").first().text(itemLabel);
-        $new.show();
-        $container.append($new);
+        const $tmplLbl = $tmpl.find("label").not(":has(input)").first();
+        const lbl = document.createElement("label");
+        if ($tmplLbl[0]?.className) lbl.className = $tmplLbl[0].className;
+        lbl.textContent = itemLabel;
+
+        // Frisches Proficiency-Element (KEIN clone)
+        const pc = document.createElement(pcTag);
+        pc.setAttribute("name", newPcName);
+        if (toolVal) pc.setAttribute("value", String(toolVal));
+        // Weitere Attribute vom Template übernehmen (z.B. max, data-*)
+        if ($tmplPc[0]) {
+          for (const attr of $tmplPc[0].attributes) {
+            if (attr.name !== "name" && attr.name !== "value") {
+              pc.setAttribute(attr.name, attr.value);
+            }
+          }
+        }
+
+        li.appendChild(lbl);
+        li.appendChild(pc);
+        $container[0].appendChild(li);
       }
     }
   }
@@ -966,7 +980,7 @@ Hooks.once("ready", function () {
     try { return $(el); } catch { return $(); }
   }
 
-  function patchDialog($h, trait) {
+  function patchDialog($h, trait, app) {
     if (!$h.length) return;
 
     if (trait === "tool") {
@@ -988,7 +1002,8 @@ Hooks.once("ready", function () {
         $row.find("label").not(":has(input)").first().text(KS_TOOL_FLAT[key]);
       });
       // Fehlende Items nachinjectieren (Strategie F)
-      _injectMissingToolItems($h);
+      const _tActor = app?.document ?? app?.actor ?? app?.object;
+      _injectMissingToolItems($h, _tActor?.system?.tools ?? {});
     }
 
     if (trait === "weapon" || trait === "sim" || trait === "mar") {
@@ -1006,7 +1021,9 @@ Hooks.once("ready", function () {
         $li.show();
         $li.find("label.name").first().text(KS_WEAPON_FLAT[key]);
       });
-      _injectMissingWeaponItems($h);
+      const _actor = app?.document ?? app?.actor ?? app?.object;
+      const _profSet = _actor?.system?.traits?.weaponProf?.value ?? new Set();
+      _injectMissingWeaponItems($h, _profSet);
     }
 
     if (trait === "armor") {
@@ -1088,7 +1105,7 @@ Hooks.once("ready", function () {
       // "sim"/"mar" → "weapon" normalisieren
       if (trait === "sim" || trait === "mar") trait = "weapon";
 
-      if (trait) patchDialog($h, trait);
+      if (trait) patchDialog($h, trait, app);
     });
   }
 
