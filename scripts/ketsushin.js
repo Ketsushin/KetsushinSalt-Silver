@@ -291,12 +291,16 @@ Hooks.once("init", function () {
     ind: { label: "Indisch" },
     jpn: { label: "Japanisch" },
     zho: { label: "Chinesisch" },
-    rus: { label: "Russisch" },
     fra: { label: "Französisch" },
     ara: { label: "Arabisch" },
     por: { label: "Portugiesisch" },
     ita: { label: "Italienisch" },
-    lat: { label: "Latein" }
+    lat: { label: "Latein" },
+    sla: { label: "Slawisch" },
+    nld: { label: "Niederländisch" },
+    idn: { label: "Indonesisch" },
+    sgn: { label: "Zeichensprache" },
+    brl: { label: "Blindensprache" }
   };
 
   // Rüstungen
@@ -870,7 +874,7 @@ Hooks.once("ready", function () {
       ), { textContent: "Rüstungen", className: "category-label" }));
   }
 
-  function _injectMissingWeaponItems($h, profSet) {
+  function _injectMissingWeaponItems($h, profSet, masterySet) {
     // WeaponsConfig (dnd5e 4.x): Kategorien via dnd5e-checkbox name="...weaponProf.value.sim/mar"
     const cats = {
       sim: { items: CONFIG.DND5E.simpleWeapons  ?? {} },
@@ -886,27 +890,31 @@ Hooks.once("ready", function () {
       const allName = $allCb.attr("name") ?? "";
       const baseName = allName.slice(0, allName.lastIndexOf("."));
       if (!baseName) continue;
+      // Mastery-Basisname: "system.traits.weaponProf.mastery.value"
+      const masteryBase = baseName.replace(/\.value$/, ".mastery.value");
 
       for (const [itemKey, itemData] of Object.entries(cat.items)) {
         const itemLabel = typeof itemData === "string" ? itemData : itemData.label;
         if ($ol.find(`dnd5e-checkbox[name$=".weaponProf.value.${itemKey}"]`).length) continue;
 
-        // KEIN clone() — frisches Element erstellen damit ElementInternals
-        // (Form-Association) korrekt initialisiert wird.
-        // Struktur muss zur dnd5e-CSS passen:
-        //   <li><label class="name">...</label><div class="proficiency"><dnd5e-checkbox/></div></li>
+        // Native dnd5e-Struktur: <li><label class="name"/><dnd5e-checkbox/><dnd5e-checkbox/></li>
+        // KEIN div.proficiency-Wrapper — CSS-Grid/Flex erwartet direkte Kinder.
         const li = document.createElement("li");
         const lbl = document.createElement("label");
         lbl.className = "name";
         lbl.textContent = itemLabel;
-        const profDiv = document.createElement("div");
-        profDiv.className = "proficiency";
-        const cb = document.createElement("dnd5e-checkbox");
-        cb.setAttribute("name", `${baseName}.${itemKey}`);
-        if (profSet?.has?.(itemKey)) cb.setAttribute("checked", "");
-        profDiv.appendChild(cb);
+
+        const profCb = document.createElement("dnd5e-checkbox");
+        profCb.setAttribute("name", `${baseName}.${itemKey}`);
+        if (profSet?.has?.(itemKey)) profCb.setAttribute("checked", "");
+
+        const masteryCb = document.createElement("dnd5e-checkbox");
+        masteryCb.setAttribute("name", `${masteryBase}.${itemKey}`);
+        if (masterySet?.has?.(itemKey)) masteryCb.setAttribute("checked", "");
+
         li.appendChild(lbl);
-        li.appendChild(profDiv);
+        li.appendChild(profCb);
+        li.appendChild(masteryCb);
         $ol[0].appendChild(li);
       }
     }
@@ -1040,23 +1048,53 @@ Hooks.once("ready", function () {
     }
 
     if (trait === "weapon" || trait === "sim" || trait === "mar") {
-      // WeaponsConfig (dnd5e 4.x AppV2): kein data-key, stattdessen
-      //   <li><label class="name">Club</label>
-      //       <dnd5e-checkbox name="system.traits.weaponProf.value.club"></dnd5e-checkbox>
+      // 1) Nicht-KS-Waffen ausblenden / KS-Waffen umbenennen
       $h.find("ol.trait-list li").each(function () {
         const $li = $(this);
         const $cb = $li.find("dnd5e-checkbox[name*='.weaponProf.value.']")
                         .not("[name*='.mastery.']").first();
         if (!$cb.length) return;
         const key = ($cb.attr("name") ?? "").split(".").pop();
-        if (!key || key === "sim" || key === "mar") return; // Kategorien behalten
+        if (!key || key === "sim" || key === "mar") return; // Kategorie-Items: werden in Schritt 3 entfernt
         if (!KS_WEAPON_FLAT[key]) { $li.hide(); return; }
         $li.show();
         $li.find("label.name").first().text(KS_WEAPON_FLAT[key]);
       });
+      // 2) Fehlende KS-Waffen nachinjizieren
       const _actor = app?.document ?? app?.actor ?? app?.object;
-      const _profSet = _actor?.system?.traits?.weaponProf?.value ?? new Set();
-      _injectMissingWeaponItems($h, _profSet);
+      const _profSet    = _actor?.system?.traits?.weaponProf?.value          ?? new Set();
+      const _masterySet = _actor?.system?.traits?.weaponProf?.mastery?.value ?? new Set();
+      _injectMissingWeaponItems($h, _profSet, _masterySet);
+      // 3) Dialog in zwei Sektionen aufteilen: Leichte Waffen / Schwere Waffen
+      const _simKeys = new Set(Object.keys(CONFIG.DND5E.simpleWeapons ?? {}));
+      const _marKeys = new Set(Object.keys(CONFIG.DND5E.martialWeapons ?? {}));
+      const _simItems = [];
+      const _marItems = [];
+      $h.find("fieldset.traits.card ol.trait-list li").each(function () {
+        const $li = $(this);
+        const $cb = $li.find("dnd5e-checkbox[name*='.weaponProf.value.']")
+                        .not("[name*='.mastery.']").first();
+        if (!$cb.length) return;
+        const key = ($cb.attr("name") ?? "").split(".").pop();
+        if (!key || key === "sim" || key === "mar") return; // Kategorie-Checkboxen überspringen
+        if (_simKeys.has(key))      _simItems.push($li[0]);
+        else if (_marKeys.has(key)) _marItems.push($li[0]);
+      });
+      if (_simItems.length || _marItems.length) {
+        const $first    = $h.find("fieldset.traits.card").first();
+        const $firstOl  = $first.find("ol.trait-list").first();
+        // Sektion 1: Leichte Waffen
+        $first.find("legend").first().text("Leichte Waffen");
+        $firstOl.empty();
+        for (const li of _simItems) $firstOl.append(li);
+        // Sektion 2: Schwere Waffen (frisch erstellen – kein clone() wegen dnd5e-checkbox)
+        const $second   = $('<fieldset class="traits card"><legend>Schwere Waffen</legend><ol class="trait-list"></ol></fieldset>');
+        const $secondOl = $second.find("ol.trait-list");
+        for (const li of _marItems) $secondOl.append(li);
+        $first.after($second);
+        // Übrige Fieldsets (SONSTIGE etc.) ausblenden
+        $h.find("fieldset.traits.card").not($first).not($second).hide();
+      }
     }
 
     if (trait === "armor") {
